@@ -36,7 +36,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The shared `SymbolNode` and `SymbolEdge` structs are defined and used by all modules via the graph crate/module
   3. Tree-sitter parses a sample TypeScript file without errors (native C linkage, no bindings)
   4. Given a directory of mixed .ts, .swift, .go, and .py files, the tool correctly reports which language(s) it detected
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — Workspace scaffold, core data model, language detection, extractor trait
+- [ ] 01-02-PLAN.md — Tree-sitter grammar linkage validation with fixture files
+- [ ] 01-03-PLAN.md — CLI binary crate with scan summary and smoke tests
 
 ### Phase 2: TypeScript Extractor
 **Goal**: Users can point cgraph at a TypeScript/React Native project and get a complete, accurate graph of all symbols and their relationships, including barrel re-exports resolved to their true source and tsconfig path aliases resolved to real file paths.
@@ -174,7 +178,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/3 | Planning complete | - |
 | 2. TypeScript Extractor | 0/TBD | Not started | - |
 | 3. Indexer & Analysis Pipeline | 0/TBD | Not started | - |
 | 4. HTTP Server & Browser Shell | 0/TBD | Not started | - |
