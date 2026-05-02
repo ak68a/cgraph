@@ -484,6 +484,142 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_unresolved_call_single() {
+        // A Call edge with target "unresolved::format" is rewritten to "src/utils.ts::format"
+        // when a node with name="format", is_exported=true exists in the graph.
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_node("src/utils.ts::format", "src/utils.ts", "format", true));
+        graph.add_symbol(make_node("src/app.ts::App", "src/app.ts", "App", true));
+
+        let mut edges = vec![
+            SymbolEdge {
+                source_id: "src/app.ts::<call>".to_string(),
+                target_id: "unresolved::format".to_string(),
+                kind: EdgeKind::Call,
+                source_location: 5,
+            },
+        ];
+
+        super::resolve_unresolved_edges(&mut edges, &graph);
+
+        assert_eq!(edges[0].target_id, "src/utils.ts::format");
+        assert_eq!(edges[0].kind, EdgeKind::Call);
+    }
+
+    #[test]
+    fn test_resolve_unresolved_typeref() {
+        // A TypeRef edge with target "unresolved::UserProfile" is rewritten to
+        // "src/types.ts::UserProfile" when a matching exported type exists.
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_node("src/types.ts::UserProfile", "src/types.ts", "UserProfile", true));
+        graph.add_symbol(make_node("src/app.ts::App", "src/app.ts", "App", true));
+
+        let mut edges = vec![
+            SymbolEdge {
+                source_id: "src/app.ts::App".to_string(),
+                target_id: "unresolved::UserProfile".to_string(),
+                kind: EdgeKind::TypeRef,
+                source_location: 3,
+            },
+        ];
+
+        super::resolve_unresolved_edges(&mut edges, &graph);
+
+        assert_eq!(edges[0].target_id, "src/types.ts::UserProfile");
+        assert_eq!(edges[0].kind, EdgeKind::TypeRef);
+    }
+
+    #[test]
+    fn test_resolve_unresolved_ambiguous_prefers_import_file() {
+        // When two files export "format", and the source file has an Import edge targeting
+        // one of those files, the resolution picks the file that was imported.
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_node("src/helpers.ts::format", "src/helpers.ts", "format", true));
+        graph.add_symbol(make_node("src/utils.ts::format", "src/utils.ts", "format", true));
+        graph.add_symbol(make_node("src/app.ts::App", "src/app.ts", "App", true));
+
+        let mut edges = vec![
+            // Import from utils (provides disambiguation context)
+            SymbolEdge {
+                source_id: "src/app.ts::<import>".to_string(),
+                target_id: "src/utils.ts::format".to_string(),
+                kind: EdgeKind::Import,
+                source_location: 1,
+            },
+            // Unresolved call to format
+            SymbolEdge {
+                source_id: "src/app.ts::<call>".to_string(),
+                target_id: "unresolved::format".to_string(),
+                kind: EdgeKind::Call,
+                source_location: 5,
+            },
+        ];
+
+        super::resolve_unresolved_edges(&mut edges, &graph);
+
+        // Should resolve to utils (since app.ts imports from utils)
+        assert_eq!(edges[1].target_id, "src/utils.ts::format");
+    }
+
+    #[test]
+    fn test_resolve_unresolved_no_match() {
+        // A Call edge with target "unresolved::thirdPartyFn" stays unchanged when
+        // no exported symbol matches.
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_node("src/utils.ts::format", "src/utils.ts", "format", true));
+
+        let mut edges = vec![
+            SymbolEdge {
+                source_id: "src/app.ts::<call>".to_string(),
+                target_id: "unresolved::thirdPartyFn".to_string(),
+                kind: EdgeKind::Call,
+                source_location: 10,
+            },
+        ];
+
+        super::resolve_unresolved_edges(&mut edges, &graph);
+
+        assert_eq!(edges[0].target_id, "unresolved::thirdPartyFn");
+    }
+
+    #[test]
+    fn test_resolve_extension_js_to_ts() {
+        // An import path ending in ".js" resolves to the ".ts" file when a node
+        // with file_path ending in ".ts" exists in the graph.
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_node("src/utils.ts::format", "src/utils.ts", "format", true));
+
+        // Test .js -> .ts
+        let result = super::resolve_extension("src/utils.js", "format", &graph);
+        assert_eq!(result, "src/utils.ts");
+
+        // Test .jsx -> .tsx
+        graph.add_symbol(make_node("src/Button.tsx::Button", "src/Button.tsx", "Button", true));
+        let result = super::resolve_extension("src/Button.jsx", "Button", &graph);
+        assert_eq!(result, "src/Button.tsx");
+
+        // Test .mjs -> .mts
+        graph.add_symbol(make_node("src/config.mts::config", "src/config.mts", "config", true));
+        let result = super::resolve_extension("src/config.mjs", "config", &graph);
+        assert_eq!(result, "src/config.mts");
+
+        // Test .cjs -> .cts
+        graph.add_symbol(make_node("src/loader.cts::loader", "src/loader.cts", "loader", true));
+        let result = super::resolve_extension("src/loader.cjs", "loader", &graph);
+        assert_eq!(result, "src/loader.cts");
+    }
+
+    #[test]
+    fn test_resolve_extension_index_js() {
+        // An import path like "./utils/index.js" resolves to "./utils/index.ts".
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_node("src/utils/index.ts::format", "src/utils/index.ts", "format", true));
+
+        let result = super::resolve_extension("src/utils/index.js", "format", &graph);
+        assert_eq!(result, "src/utils/index.ts");
+    }
+
+    #[test]
     fn test_barrel_chain_cycle_guard() {
         // Simulate circular barrel re-exports: A re-exports from B, B re-exports from A
         let mut graph = CodeGraph::new();
