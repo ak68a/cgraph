@@ -62,7 +62,7 @@ fn file_path_errors() {
         .stderr(predicate::str::contains("not a directory"));
 }
 
-/// Test: `cg <valid-path>` runs detection and prints summary
+/// Test: `cg <valid-path>` runs indexer and prints scan statistics + analysis summary
 #[test]
 fn scan_fixture_directory() {
     let fixtures = workspace_root().join("crates/core/tests/fixtures");
@@ -71,33 +71,52 @@ fn scan_fixture_directory() {
         .arg(fixtures)
         .assert()
         .success()
-        .stdout(predicate::str::contains("cgraph scan summary"))
-        .stdout(predicate::str::contains("Parseable"));
+        .stdout(predicate::str::contains("cgraph scan:"))
+        .stdout(predicate::str::contains("files"))
+        .stdout(predicate::str::contains("symbols"))
+        .stdout(predicate::str::contains("edges"));
 }
 
-/// Test: `cg <valid-path>` detects TypeScript files in fixtures
+/// Test: `cg <valid-path>` prints analysis summary with dead code and cycle counts
 #[test]
-fn scan_detects_typescript() {
+fn scan_prints_analysis_summary() {
     let fixtures = workspace_root().join("crates/core/tests/fixtures");
     Command::cargo_bin("cg")
         .unwrap()
         .arg(fixtures)
         .assert()
         .success()
-        .stdout(predicate::str::contains("TypeScript"));
+        .stdout(predicate::str::contains("analysis:"))
+        .stdout(predicate::str::contains("dead code:"))
+        .stdout(predicate::str::contains("circular dependencies:"));
 }
 
-/// Test: `cg <path> -v` includes verbose file listing
+/// Test: `cg <path> --dead-code` prints dead code report
 #[test]
-fn verbose_flag_shows_files() {
+fn dead_code_flag() {
     let fixtures = workspace_root().join("crates/core/tests/fixtures");
     Command::cargo_bin("cg")
         .unwrap()
         .args([
             fixtures.to_str().expect("fixtures path is valid UTF-8"),
-            "-v",
+            "--dead-code",
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[parseable]"));
+        .stdout(predicate::str::contains("dead code"));
+}
+
+/// Test: `cg <path> --cycles` prints cycles report
+#[test]
+fn cycles_flag() {
+    let fixtures = workspace_root().join("crates/core/tests/fixtures");
+    Command::cargo_bin("cg")
+        .unwrap()
+        .args([
+            fixtures.to_str().expect("fixtures path is valid UTF-8"),
+            "--cycles",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("circular dependencies"));
 }
