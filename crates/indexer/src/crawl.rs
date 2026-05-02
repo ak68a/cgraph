@@ -106,6 +106,10 @@ impl Indexer {
         let aliases = crate::resolve::TsConfigAliases::load(project_root);
         crate::resolve::resolve_edges(&mut all_edges, &mut code_graph, project_root, &aliases);
 
+        // Resolve unresolved:: Call and TypeRef edge targets by matching symbol names
+        // to exported symbols in the graph (Gap Closure: edge resolution)
+        crate::resolve::resolve_unresolved_edges(&mut all_edges, &code_graph);
+
         // Phase 2: Remap pseudo-node edge sources to file-level module nodes,
         // then add resolved edges to the graph.
         // Import edges use "file::<import>" and Call edges use "file::<call>" as
@@ -329,6 +333,77 @@ mod tests {
             graph.get_index(&format_id).is_some(),
             "expected src/utils.ts::format node in graph"
         );
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_unresolved_edge_resolution_integration() {
+        // End-to-end: multi-file project with function calls and type references
+        // between files. Verifies that unresolved:: edges are resolved to actual
+        // graph edges (Gap Closure: edge resolution).
+        let tmp = std::env::temp_dir().join("cgraph_test_unresolved_edge_resolution");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        // utils.ts: exports a function
+        fs::write(
+            tmp.join("utils.ts"),
+            "export function format(s: string): string { return s; }\n",
+        )
+        .unwrap();
+
+        // types.ts: exports an interface
+        fs::write(
+            tmp.join("types.ts"),
+            "export interface UserProfile { name: string; }\n",
+        )
+        .unwrap();
+
+        // app.ts: imports from both, calls format(), implements UserProfile
+        fs::write(
+            tmp.join("app.ts"),
+            concat!(
+                "import { format } from './utils';\n",
+                "import { UserProfile } from './types';\n",
+                "export class App implements UserProfile {\n",
+                "  name = '';\n",
+                "  run() { format('hello'); }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
+
+        let indexer = Indexer::new(vec![Box::new(TsExtractor::new())]);
+        let graph = indexer.index(&tmp).unwrap();
+
+        // Verify edge_count >= 2 (at least import + call/typeref edges resolved)
+        assert!(
+            graph.edge_count() >= 2,
+            "expected at least 2 edges, got {}",
+            graph.edge_count()
+        );
+
+        // Verify at least one Call edge exists in the graph
+        let mut has_call_edge = false;
+        for edge_idx in graph.graph.edge_indices() {
+            let edge_kind = &graph.graph[edge_idx];
+            if *edge_kind == cgraph_core::EdgeKind::Call {
+                has_call_edge = true;
+                break;
+            }
+        }
+        assert!(has_call_edge, "expected at least one Call edge in the graph");
+
+        // Verify no edge targets "unresolved::format" (all unresolved edges either resolved or dropped)
+        for edge_idx in graph.graph.edge_indices() {
+            let (_src, tgt) = graph.graph.edge_endpoints(edge_idx).unwrap();
+            let target_node = &graph.graph[tgt];
+            assert_ne!(
+                target_node.name, "unresolved::format",
+                "no edge should target an unresolved:: node"
+            );
+        }
 
         fs::remove_dir_all(&tmp).ok();
     }
