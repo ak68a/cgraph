@@ -551,7 +551,7 @@ println!(
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Is `SymbolNode` missing an `is_barrel` flag, or should barrel tracking be a side-channel in CodeGraph?**
    - What we know: Pitfall 4 shows that removing barrel nodes is risky. Phase 4 needs to know which nodes to hide in the default file view.
