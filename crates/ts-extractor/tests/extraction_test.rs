@@ -581,3 +581,24 @@ fn partial_parse_still_extracts() {
     // Should still extract what it can (may or may not get validFn depending on error recovery)
     // The key contract is: no panic, errors recorded as data
 }
+
+#[test]
+fn partial_parse_error_reports_correct_line() {
+    // WR-01 regression: PartialParse error line must point to the actual ERROR node,
+    // not always line 0 from the root node.
+    let extractor = TsExtractor::new();
+    let source = "export function validFn(): string { return \"ok\"; }\nexport function broken( {\n";
+    let result = extractor.extract(Path::new("broken.ts"), source);
+
+    assert!(!result.errors.is_empty(), "Should have parse errors");
+    match &result.errors[0] {
+        cgraph_core::ParseError::PartialParse { line, .. } => {
+            assert!(
+                *line > 0,
+                "PartialParse error line should be > 0, pointing to the error location. Got: {}",
+                line
+            );
+        }
+        other => panic!("Expected PartialParse error, got: {:?}", other),
+    }
+}

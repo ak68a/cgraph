@@ -4,7 +4,7 @@ pub mod edges;
 pub mod classify;
 
 use std::path::Path;
-use tree_sitter::{Parser, Query, Language as TsLanguage};
+use tree_sitter::{Node, Parser, Query, Language as TsLanguage};
 use tree_sitter_typescript::LANGUAGE_TSX;
 use cgraph_core::{
     Extractor, ExtractionResult, ParseError,
@@ -96,9 +96,10 @@ impl Extractor for TsExtractor {
 
         // Record partial parse errors but continue extraction (D-14)
         if root.has_error() {
+            let error_line = find_first_error_line(root);
             errors.push(ParseError::PartialParse {
                 path: path.display().to_string(),
-                line: root.start_position().row as u32,
+                line: error_line,
             });
         }
 
@@ -127,4 +128,25 @@ impl Extractor for TsExtractor {
 
         ExtractionResult { nodes, edges, errors }
     }
+}
+
+/// Walk the tree to find the first ERROR or MISSING node and return its 1-based line number.
+/// Returns 0 if no error node is found (should not happen when `root.has_error()` is true).
+fn find_first_error_line(node: Node) -> u32 {
+    if node.is_error() || node.is_missing() {
+        return node.start_position().row as u32 + 1;
+    }
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let line = find_first_error_line(cursor.node());
+            if line > 0 {
+                return line;
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+    0
 }
