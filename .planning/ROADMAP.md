@@ -97,8 +97,8 @@ Plans:
 - [x] 03-04-PLAN.md — CLI wiring: scan stats, analysis summary, --dead-code + --cycles flags
 
 **Wave 4** *(gap closure — edge resolution quality)*
-- [ ] 03-05-PLAN.md — Resolve unresolved:: Call/TypeRef edges via name-based symbol lookup + .js-to-.ts extension mapping
-- [ ] 03-06-PLAN.md — Improve tsconfig: baseUrl without paths, extends chains, multiple path targets
+- [x] 03-05-PLAN.md — Resolve unresolved:: Call/TypeRef edges via name-based symbol lookup + .js-to-.ts extension mapping
+- [x] 03-06-PLAN.md — Improve tsconfig: baseUrl without paths, extends chains, multiple path targets
 
 ### Phase 4: HTTP Server & Browser Shell
 **Goal**: Users run `cg <path>` and a browser tab opens showing a D3 force-directed graph of the scanned project — file-level nodes by default, edges with arrowheads, nodes color-coded by type, simulation pre-settled so the graph is immediately usable.
@@ -212,7 +212,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | - |
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
-| 3. Indexer & Analysis Pipeline | 4/6 | Gap closure | - |
+| 3. Indexer & Analysis Pipeline | 6/6 | Complete | 2026-05-02 |
 | 4. HTTP Server & Browser Shell | 0/TBD | Not started | - |
 | 5. Graph Interaction | 0/TBD | Not started | - |
 | 6. Watch Mode | 0/TBD | Not started | - |
