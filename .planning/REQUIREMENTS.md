@@ -58,18 +58,20 @@
 - [ ] **INFR-05**: Watch mode pushes incremental graph updates via WebSocket (no full reload)
 - [ ] **INFR-06**: Tool is distributed as a single binary (cargo install, Homebrew, and npm prebuilt binaries)
 
+### Agent Interface
+
+- [ ] **AGNT-01**: Tool outputs full graph as structured JSON via `cg <path> --json`
+- [ ] **AGNT-02**: Tool supports query mode (`cg query blast-radius <symbol-id>`) returning structured results
+- [ ] **AGNT-03**: Tool runs as an MCP server (`cg mcp`) queryable by Claude Code and other AI agents
+
+### Multi-Repo
+
+- [ ] **MREP-01**: Tool scans multiple directories in a single invocation (`cg ./repo-a ./repo-b`)
+- [ ] **MREP-02**: Tool detects API client calls and matches them to endpoint definitions across repos
+- [ ] **MREP-03**: Graph provides a service-layer view showing only inter-service edges
+- [ ] **MREP-04**: Blast radius queries cross repo boundaries (changing an endpoint shows affected consumers)
+
 ## v2 Requirements
-
-### Cross-Language
-
-- **XLNG-01**: Tool links symbols across language boundaries (e.g., TS API client calling Go endpoint)
-- **XLNG-02**: Tool supports monorepo analysis (multiple packages in one graph)
-
-### Export & Integration
-
-- **XPRT-01**: User can export graph as PNG/SVG snapshot
-- **XPRT-02**: Graph state is persisted in URL (shareable links)
-- **XPRT-03**: Tool provides JSON output mode for CI integration
 
 ### Advanced Visualization
 
@@ -77,12 +79,16 @@
 - **ADVZ-02**: Canvas rendering mode for large codebases (>2000 nodes)
 - **ADVZ-03**: Cluster visualization by directory/module
 
+### Export
+
+- **XPRT-01**: User can export graph as PNG/SVG snapshot
+- **XPRT-02**: Graph state is persisted in URL (shareable links)
+
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
 | Electron/desktop app | CLI + browser is sufficient; no packaging complexity |
-| Homebrew/standalone binary | npm distribution only for v1 |
 | CI/report mode | Different tool, different trust model |
 | Code modification/refactoring | Read-only analysis tool |
 | 3D force graph | No navigational advantage; motion sickness risk |

@@ -21,7 +21,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 7: Swift Extractor** - tree-sitter-swift grammar, extraction of Swift symbols and relationships
 - [ ] **Phase 8: Go Extractor** - tree-sitter-go grammar, extraction of Go symbols and relationships
 - [ ] **Phase 9: Python Extractor** - tree-sitter-python grammar, extraction of Python symbols and relationships
-- [ ] **Phase 10: Distribution** - npm package publishing, npx install UX, README, version ABI safety guard
+- [ ] **Phase 10: Distribution** - cargo install, Homebrew tap, prebuilt binaries, README
+- [ ] **Phase 11: Agent Interface** - MCP server mode, JSON output, query CLI for programmatic access by AI agents
+- [ ] **Phase 12: Multi-Repo Analysis** - Cross-service edge detection, multi-directory scanning, API route matching, service-layer graph view
 
 ## Phase Details
 
@@ -143,10 +145,32 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. README covers install methods, usage, and supported languages
 **Plans**: TBD
 
+### Phase 11: Agent Interface
+**Goal**: cgraph is usable as a programmatic knowledge layer for AI agents (Claude Code, Cursor, etc.) — agents can query the graph for blast radius, dead code, dependencies, and symbol relationships without needing the visual UI.
+**Depends on**: Phase 3 (needs indexer + analysis), Phase 10 (needs distribution for install)
+**Requirements**: AGNT-01, AGNT-02, AGNT-03
+**Success Criteria** (what must be TRUE):
+  1. `cg ./path --json` outputs the full graph as structured JSON to stdout
+  2. `cg query blast-radius <symbol-id>` returns a JSON list of transitive dependents
+  3. `cg mcp` starts an MCP server that Claude Code can connect to and query the graph interactively
+  4. An agent can determine "what breaks if I change X?" in under 2 seconds
+**Plans**: TBD
+
+### Phase 12: Multi-Repo Analysis
+**Goal**: cgraph can analyze distributed systems spanning multiple repositories — detecting cross-service edges (API calls, shared contracts, message queues) and presenting a service-level graph view alongside the per-repo symbol graph.
+**Depends on**: Phase 5 (needs full interaction layer), Phase 11 (agents need multi-repo queries)
+**Requirements**: MREP-01, MREP-02, MREP-03, MREP-04
+**Success Criteria** (what must be TRUE):
+  1. `cg ./frontend ./backend ./auth-service` scans multiple directories and produces a unified graph
+  2. API client calls (fetch/axios/HTTP) in one repo are matched to route/endpoint definitions in another repo
+  3. The graph view offers a "service layer" toggle showing only inter-service edges
+  4. Blast radius queries can cross repo boundaries ("changing this endpoint affects these consumers")
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each other) and can run in parallel if desired.
+Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each other) and can run in parallel if desired. Phase 11 depends on Phase 3+10. Phase 12 depends on Phase 5+11.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -160,3 +184,5 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 | 8. Go Extractor | 0/TBD | Not started | - |
 | 9. Python Extractor | 0/TBD | Not started | - |
 | 10. Distribution | 0/TBD | Not started | - |
+| 11. Agent Interface | 0/TBD | Not started | - |
+| 12. Multi-Repo Analysis | 0/TBD | Not started | - |
