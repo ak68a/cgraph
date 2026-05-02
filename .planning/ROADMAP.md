@@ -38,7 +38,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Given a directory of mixed .ts, .swift, .go, and .py files, the tool correctly reports which language(s) it detected
 **Plans:** 3 plans
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — Workspace scaffold, core data model, language detection, extractor trait
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Tree-sitter grammar linkage validation with fixture files
 - [ ] 01-03-PLAN.md — CLI binary crate with scan summary and smoke tests
 
