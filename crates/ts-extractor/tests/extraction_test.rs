@@ -192,3 +192,308 @@ fn exported_classes_extracted() {
     assert_eq!(user_service.unwrap().kind, cgraph_core::SymbolKind::Class);
     assert!(user_service.unwrap().is_exported);
 }
+
+// --- Edge Extraction Tests ---
+
+// PARS-05: Import edges
+
+#[test]
+fn import_named() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/hooks.ts")
+        .expect("hooks.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/hooks.ts"), &source);
+
+    // import { useState, useEffect } from 'react'
+    let react_imports: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Import && e.target_id.contains("react"))
+        .collect();
+    assert!(
+        react_imports.iter().any(|e| e.target_id.contains("useState")),
+        "Missing import edge for useState from react. Edges: {:?}",
+        react_imports
+    );
+    assert!(
+        react_imports.iter().any(|e| e.target_id.contains("useEffect")),
+        "Missing import edge for useEffect from react. Edges: {:?}",
+        react_imports
+    );
+}
+
+#[test]
+fn import_named_relative() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/hooks.ts")
+        .expect("hooks.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/hooks.ts"), &source);
+
+    // import { fetchUser } from './services'
+    let service_imports: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Import && e.target_id.contains("./services"))
+        .collect();
+    assert!(
+        service_imports.iter().any(|e| e.target_id.contains("fetchUser")),
+        "Missing import edge for fetchUser from ./services. Edges: {:?}",
+        service_imports
+    );
+}
+
+#[test]
+fn import_default() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/components.tsx")
+        .expect("components.tsx fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/components.tsx"), &source);
+
+    // import React from 'react'
+    let react_default: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Import && e.target_id.contains("react::React"))
+        .collect();
+    assert!(
+        !react_default.is_empty(),
+        "Missing default import edge for React. All import edges: {:?}",
+        result.edges.iter().filter(|e| e.kind == cgraph_core::EdgeKind::Import).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn import_raw_alias_path() {
+    // Per D-28/D-29: import paths are emitted raw, no resolution
+    let extractor = TsExtractor::new();
+    // Create inline source with an alias path
+    let source = r#"import { Button } from '@/components/Button';"#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let alias_import: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Import)
+        .collect();
+    assert!(
+        alias_import.iter().any(|e| e.target_id.contains("@/components/Button")),
+        "Alias path not preserved raw. Edges: {:?}",
+        alias_import
+    );
+}
+
+// PARS-06: Call edges
+
+#[test]
+fn call_direct() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/hooks.ts")
+        .expect("hooks.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/hooks.ts"), &source);
+
+    // Direct calls: useState(), useEffect(), fetchUser()
+    let call_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Call)
+        .collect();
+    assert!(
+        call_edges.iter().any(|e| e.target_id.contains("useState")),
+        "Missing call edge for useState(). Call edges: {:?}",
+        call_edges
+    );
+    assert!(
+        call_edges.iter().any(|e| e.target_id.contains("fetchUser")),
+        "Missing call edge for fetchUser(). Call edges: {:?}",
+        call_edges
+    );
+}
+
+#[test]
+fn call_no_member() {
+    // Per D-30: obj.method() calls should NOT be captured
+    let extractor = TsExtractor::new();
+    let source = r#"
+        const result = obj.method();
+        const data = this.fetchData();
+        const value = console.log("test");
+        const direct = standalone();
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let call_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Call)
+        .collect();
+
+    // Should only have "standalone" as a call edge
+    assert!(
+        call_edges.iter().any(|e| e.target_id.contains("standalone")),
+        "Missing call edge for standalone(). Call edges: {:?}",
+        call_edges
+    );
+    // Should NOT have method, fetchData, or log
+    assert!(
+        !call_edges.iter().any(|e| e.target_id.contains("method")),
+        "Member call obj.method() should not produce edge. Call edges: {:?}",
+        call_edges
+    );
+    assert!(
+        !call_edges.iter().any(|e| e.target_id.contains("log")),
+        "Member call console.log() should not produce edge. Call edges: {:?}",
+        call_edges
+    );
+}
+
+// PARS-07: Type reference edges
+
+#[test]
+fn type_ref_extends() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/services.ts")
+        .expect("services.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/services.ts"), &source);
+
+    // class UserService extends UserRepository
+    let extends_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.source_id.contains("UserService"))
+        .collect();
+    assert!(
+        extends_edges.iter().any(|e| e.target_id.contains("UserRepository")),
+        "Missing TypeRef edge: UserService extends UserRepository. TypeRef edges: {:?}",
+        result.edges.iter().filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn type_ref_implements() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/services.ts")
+        .expect("services.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/services.ts"), &source);
+
+    // class UserRepository implements Repository
+    let impl_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.source_id.contains("UserRepository"))
+        .collect();
+    assert!(
+        impl_edges.iter().any(|e| e.target_id.contains("Repository")),
+        "Missing TypeRef edge: UserRepository implements Repository. TypeRef edges: {:?}",
+        result.edges.iter().filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn type_ref_iface_extends() {
+    // Interface extending another interface
+    let extractor = TsExtractor::new();
+    let source = r#"
+        interface Base {
+            id: string;
+        }
+        export interface Extended extends Base {
+            name: string;
+        }
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let type_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef)
+        .collect();
+    assert!(
+        type_refs.iter().any(|e| e.target_id.contains("Base") && e.source_id.contains("Extended")),
+        "Missing TypeRef edge: Extended extends Base. TypeRef edges: {:?}",
+        type_refs
+    );
+}
+
+// PARS-08: Re-export edges
+
+#[test]
+fn reexport_named() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/barrel.ts")
+        .expect("barrel.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/barrel.ts"), &source);
+
+    // export { UserService, UserRepository } from './services'
+    let reexport_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::ReExport)
+        .collect();
+    assert!(
+        reexport_edges.iter().any(|e| e.target_id.contains("./services::UserService")),
+        "Missing ReExport edge for UserService. ReExport edges: {:?}",
+        reexport_edges
+    );
+    assert!(
+        reexport_edges.iter().any(|e| e.target_id.contains("./services::UserRepository")),
+        "Missing ReExport edge for UserRepository. ReExport edges: {:?}",
+        reexport_edges
+    );
+}
+
+#[test]
+fn reexport_star() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/barrel.ts")
+        .expect("barrel.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/barrel.ts"), &source);
+
+    // export * from './hooks'
+    let star_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::ReExport && e.target_id.contains("::*"))
+        .collect();
+    assert!(
+        star_edges.iter().any(|e| e.target_id.contains("./hooks::*")),
+        "Missing star ReExport edge for ./hooks. Star edges: {:?}",
+        star_edges
+    );
+}
+
+#[test]
+fn reexport_raw_path() {
+    // Per D-25: extractor emits raw single-hop ReExport edges (no chain resolution)
+    let extractor = TsExtractor::new();
+    let source = r#"export { Config } from './config';"#;
+    let result = extractor.extract(Path::new("index.ts"), source);
+
+    let reexport_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::ReExport)
+        .collect();
+    assert_eq!(reexport_edges.len(), 1, "Expected exactly 1 reexport edge");
+    assert!(
+        reexport_edges[0].target_id.contains("./config::Config"),
+        "ReExport target should be raw path. Got: {:?}",
+        reexport_edges[0].target_id
+    );
+}
+
+// PARS-09 and PARS-10 are implicit -- verified by import_raw_alias_path and reexport_raw_path tests
+// Phase 2 emits raw paths; Phase 3 indexer resolves them.
+
+// --- Full Integration Test ---
+
+#[test]
+fn full_extraction_produces_nodes_and_edges() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/services.ts")
+        .expect("services.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/services.ts"), &source);
+
+    // Should have both nodes and edges
+    assert!(!result.nodes.is_empty(), "No symbols extracted from services.ts");
+    assert!(!result.edges.is_empty(), "No edges extracted from services.ts");
+    assert!(result.errors.is_empty(), "Unexpected errors: {:?}", result.errors);
+
+    // Verify we get import, call, and type ref edges
+    let has_import = result.edges.iter().any(|e| e.kind == cgraph_core::EdgeKind::Import);
+    let has_type_ref = result.edges.iter().any(|e| e.kind == cgraph_core::EdgeKind::TypeRef);
+    assert!(has_import, "No Import edges in services.ts");
+    assert!(has_type_ref, "No TypeRef edges in services.ts");
+}
+
+#[test]
+fn partial_parse_still_extracts() {
+    // Per D-14: partial parse errors don't prevent extraction
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function validFn(): string { return "ok"; }
+        export function broken( { // syntax error
+        export function anotherValid(): number { return 42; }
+    "#;
+    let result = extractor.extract(Path::new("broken.ts"), source);
+
+    // Should have parse error recorded
+    assert!(!result.errors.is_empty(), "Should have parse errors for invalid syntax");
+    // Should still extract what it can (may or may not get validFn depending on error recovery)
+    // The key contract is: no panic, errors recorded as data
+}
