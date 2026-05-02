@@ -20,6 +20,7 @@ pub fn extract_symbols(
     let mut query_matches = cursor.matches(symbol_query, root, source.as_bytes());
 
     let name_idx = symbol_query.capture_index_for_name("symbol_name");
+    let export_stmt_idx = symbol_query.capture_index_for_name("export_stmt");
 
     while let Some(m) = query_matches.next() {
         let pattern_idx = m.pattern_index;
@@ -47,10 +48,23 @@ pub fn extract_symbols(
             None => continue,
         };
 
+        // Find the @export_stmt capture to get the full declaration span.
+        // The @symbol_name capture is just the identifier token (single line),
+        // so we use the parent export_statement node for accurate line_start/line_end.
+        let (span_start, span_end) = export_stmt_idx
+            .and_then(|eidx| {
+                m.captures.iter().find(|c| c.index == eidx).map(|c| {
+                    (
+                        c.node.start_position().row as u32 + 1,
+                        c.node.end_position().row as u32 + 1,
+                    )
+                })
+            })
+            .unwrap_or((0, 0)); // fallback populated below per-capture
+
         for cap in m.captures {
             if cap.index == capture_idx {
                 let name = &source[cap.node.byte_range()];
-                let node = cap.node;
 
                 // Reclassify Function as Hook if it follows the use* convention (D-32)
                 let kind = if matches!(base_kind, SymbolKind::Function) {
@@ -59,14 +73,25 @@ pub fn extract_symbols(
                     base_kind.clone()
                 };
 
+                // Use the export_statement span if available, otherwise fall back
+                // to the identifier node span (should not happen with current queries).
+                let (line_start, line_end) = if span_start > 0 {
+                    (span_start, span_end)
+                } else {
+                    (
+                        cap.node.start_position().row as u32 + 1,
+                        cap.node.end_position().row as u32 + 1,
+                    )
+                };
+
                 nodes.push(SymbolNode {
                     id: format!("{}::{}", file_path, name),
                     name: name.to_string(),
                     kind,
                     file_path: file_path.to_string(),
                     language: language.clone(),
-                    line_start: node.start_position().row as u32 + 1,
-                    line_end: node.end_position().row as u32 + 1,
+                    line_start,
+                    line_end,
                     is_exported: true,
                 });
                 break; // one symbol per match

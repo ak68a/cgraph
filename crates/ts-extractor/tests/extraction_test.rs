@@ -69,6 +69,32 @@ fn exported_functions_extracted() {
 }
 
 #[test]
+fn exported_symbol_line_span_covers_full_declaration() {
+    // CR-01 regression: line_start and line_end must span the full declaration,
+    // not just the identifier token.
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/services.ts")
+        .expect("services.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/services.ts"), &source);
+
+    // `export function fetchUser()` spans lines 24-27 in services.ts (4 lines)
+    let fetch_user = result.nodes.iter().find(|n| n.name == "fetchUser" && n.is_exported).unwrap();
+    assert!(
+        fetch_user.line_end > fetch_user.line_start,
+        "Exported function fetchUser should span multiple lines: line_start={}, line_end={}",
+        fetch_user.line_start, fetch_user.line_end
+    );
+
+    // `export class UserRepository` spans lines 8-16 (multi-line class)
+    let user_repo = result.nodes.iter().find(|n| n.name == "UserRepository" && n.is_exported).unwrap();
+    assert!(
+        user_repo.line_end > user_repo.line_start,
+        "Exported class UserRepository should span multiple lines: line_start={}, line_end={}",
+        user_repo.line_start, user_repo.line_end
+    );
+}
+
+#[test]
 fn exported_types_extracted() {
     let extractor = TsExtractor::new();
     let source = std::fs::read_to_string("tests/fixtures/schemas.ts")
