@@ -87,14 +87,14 @@ Plans:
 **Plans:** 4 plans
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — Indexer crate scaffold, CodeGraph struct, file crawl + extractor dispatch
+- [x] 03-01-PLAN.md — Indexer crate scaffold, CodeGraph struct, file crawl + extractor dispatch
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 03-02-PLAN.md — Barrel chain resolution + tsconfig path alias resolution
-- [ ] 03-03-PLAN.md — Analysis algorithms: dead code, blast radius, transitive deps, cycles
+- [x] 03-02-PLAN.md — Barrel chain resolution + tsconfig path alias resolution
+- [x] 03-03-PLAN.md — Analysis algorithms: dead code, blast radius, transitive deps, cycles
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 03-04-PLAN.md — CLI wiring: scan stats, analysis summary, --dead-code + --cycles flags
+- [x] 03-04-PLAN.md — CLI wiring: scan stats, analysis summary, --dead-code + --cycles flags
 
 ### Phase 4: HTTP Server & Browser Shell
 **Goal**: Users run `cg <path>` and a browser tab opens showing a D3 force-directed graph of the scanned project — file-level nodes by default, edges with arrowheads, nodes color-coded by type, simulation pre-settled so the graph is immediately usable.
@@ -208,7 +208,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | - |
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
-| 3. Indexer & Analysis Pipeline | 0/4 | Planning | - |
+| 3. Indexer & Analysis Pipeline | 4/4 | Verifying | - |
 | 4. HTTP Server & Browser Shell | 0/TBD | Not started | - |
 | 5. Graph Interaction | 0/TBD | Not started | - |
 | 6. Watch Mode | 0/TBD | Not started | - |
