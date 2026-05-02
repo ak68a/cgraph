@@ -1,8 +1,8 @@
-# Code Graph
+# cgraph
 
 ## What This Is
 
-A multi-language static analysis tool that parses codebases (TypeScript/React Native, Swift, Go, Python) and produces an interactive force-directed graph of symbol relationships. Distributed as an npm CLI — run it against any project directory and explore the graph in your browser.
+A multi-language static analysis tool that parses codebases (TypeScript/React Native, Swift, Go, Python) and produces an interactive force-directed graph of symbol relationships. Written in Rust, distributed as a single binary (`cg`) — run it against any project directory and explore the graph in your browser.
 
 ## Core Value
 
@@ -22,13 +22,12 @@ Instantly see what's connected to what — dead code, blast radius, dependency d
 - [ ] Blast radius view (click a symbol, see all transitive dependents)
 - [ ] Search and focus on specific symbols
 - [ ] Watch mode with live graph updates on file save
-- [ ] CLI delivery via npm (`npx code-graph ./path`)
+- [ ] CLI delivery as single binary (`cg ./path`)
 - [ ] Filtering by file, symbol type, usage count, edge type
 
 ### Out of Scope
 
 - Electron/desktop app — CLI + browser is sufficient
-- Homebrew/standalone binary — npm distribution only for v1
 - CI integration — on-demand and always-on usage only
 - Code modification/refactoring — read-only analysis tool
 - Cross-repo analysis — single project directory at a time
@@ -39,24 +38,26 @@ Instantly see what's connected to what — dead code, blast radius, dependency d
 - General-purpose tool, but OversizeConnect is the first test case and proving ground
 - Usage pattern: mix of on-demand exploration and always-on dashboard (watch mode)
 - Tree-sitter chosen over language-specific parsers (ts-morph) for multi-language support from a single parsing infrastructure
+- Written in Rust — tree-sitter is native C/Rust (no binding overhead), single binary distribution eliminates all install friction, performance handles any codebase size
 - Each language is a pluggable "extractor" — adding a new language is writing one extractor, not rebuilding the tool
+- Browser client is still HTML/JS/D3 — Rust serves it as embedded static files
 
 ## Constraints
 
-- **Tech stack**: Node.js runtime (tree-sitter Node bindings, D3, HTTP server)
-- **Distribution**: npm package only — no native binary cross-compilation
-- **Parser**: tree-sitter for all languages — consistent AST approach
-- **Visualization**: D3 force graph — full control over rendering and interaction
+- **Tech stack**: Rust for CLI/parser/server; HTML/JS/D3 for browser client
+- **Distribution**: Single binary via cargo install, Homebrew, and npm (prebuilt binaries)
+- **Parser**: tree-sitter (native C/Rust) for all languages — no binding layer
+- **Visualization**: D3 force graph in browser — full control over rendering and interaction
 - **Delivery**: CLI that starts localhost server, opens browser tab
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
+| Rust over Node.js/TypeScript | Tree-sitter is native C/Rust (no binding layer); single binary distribution eliminates ABI/install issues; performance is free | — Pending |
 | Tree-sitter over ts-morph | Multi-language support from day one; single parsing infrastructure | — Pending |
 | D3 over Cytoscape.js | More control over graph rendering; user preference | — Pending |
 | CLI + localhost over Electron | Zero packaging complexity; browser does the heavy lifting | — Pending |
-| npm over Homebrew | Tool is already Node-native; free distribution; users have Node | — Pending |
 | All 4 languages in v1 | Extractors are independent work; tree-sitter makes it modular | — Pending |
 
 ## Evolution
