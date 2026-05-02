@@ -57,6 +57,7 @@
 - [ ] **INFR-04**: Tool supports watch mode that re-parses changed files on save
 - [ ] **INFR-05**: Watch mode pushes incremental graph updates via WebSocket (no full reload)
 - [ ] **INFR-06**: Tool is distributed as a single binary (cargo install, Homebrew, and npm prebuilt binaries)
+- [ ] **INFR-07**: Watch mode detects git branch switches (checkout/switch) and performs a full re-scan rather than incremental file-level updates
 
 ### Agent Interface
 
@@ -138,10 +139,11 @@
 | INFR-04 | Phase 6 | Pending |
 | INFR-05 | Phase 6 | Pending |
 | INFR-06 | Phase 10 | Pending |
+| INFR-07 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 38 total
-- Mapped to phases: 38
+- v1 requirements: 39 total
+- Mapped to phases: 39
 - Unmapped: 0 ✓
 
 ---
