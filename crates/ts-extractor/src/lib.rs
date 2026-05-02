@@ -73,9 +73,13 @@ impl Extractor for TsExtractor {
     fn extract(&self, path: &Path, source: &str) -> ExtractionResult {
         let mut errors = Vec::new();
 
-        // Select grammar based on extension (D-36, Pitfall 1)
+        // Always use TSX grammar for both .ts and .tsx files.
+        // Queries are compiled against tsx_lang; tree-sitter's query engine requires that
+        // the node's language matches the query's language. TSX is a strict superset of
+        // TypeScript so all valid .ts syntax parses correctly under the TSX grammar.
+        // Using ts_lang for .ts files causes query matches to return zero results. (Bug fix)
         let is_tsx = path.extension().map_or(false, |e| e == "tsx");
-        let lang = if is_tsx { &self.tsx_lang } else { &self.ts_lang };
+        let lang = &self.tsx_lang;
 
         // Parse source text
         let mut parser = Parser::new();
