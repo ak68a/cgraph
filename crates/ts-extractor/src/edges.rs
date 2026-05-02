@@ -192,14 +192,17 @@ fn extract_reexports(
     let mut matches = cursor.matches(query, root, source.as_bytes());
 
     let specifier_idx = query.capture_index_for_name("specifier_name");
+    let alias_idx = query.capture_index_for_name("alias_name");
     let source_path_idx = query.capture_index_for_name("source_path");
     let star_source_idx = query.capture_index_for_name("star_source");
 
     while let Some(m) = matches.next() {
         if m.pattern_index == 0 {
             // Named re-export: export { foo, bar } from './module'
+            // Aliased re-export: export { foo as bar } from './module'
             // Each match covers one specifier (tree-sitter matches per export_specifier)
             let mut specifier_name: Option<(&str, u32)> = None;
+            let mut alias_name: Option<&str> = None;
             let mut named_source_path: Option<&str> = None;
 
             for cap in m.captures {
@@ -207,14 +210,20 @@ fn extract_reexports(
                     let name = &source[cap.node.byte_range()];
                     let line = cap.node.start_position().row as u32 + 1;
                     specifier_name = Some((name, line));
+                } else if alias_idx.is_some_and(|idx| cap.index == idx) {
+                    alias_name = Some(&source[cap.node.byte_range()]);
                 } else if source_path_idx.is_some_and(|idx| cap.index == idx) {
                     named_source_path = Some(&source[cap.node.byte_range()]);
                 }
             }
 
             if let (Some((name, line)), Some(path)) = (specifier_name, named_source_path) {
+                // For aliased re-exports (export { foo as bar }), use the alias as the
+                // public name for source_id since consumers import "bar", not "foo".
+                // The target_id uses the original name since that's what the source module exports.
+                let public_name = alias_name.unwrap_or(name);
                 edges.push(SymbolEdge {
-                    source_id: format!("{}::{}", file_path, name),
+                    source_id: format!("{}::{}", file_path, public_name),
                     target_id: format!("{}::{}", path, name),
                     kind: EdgeKind::ReExport,
                     source_location: line,

@@ -97,13 +97,16 @@ pub const TYPE_REF_QUERY_SRC: &str = r#"
 
 /// Re-export query - named and star re-exports (per D-26).
 /// Named re-exports: export { foo, bar } from './module'
+/// Aliased re-exports: export { foo as bar } from './module'
 /// Star re-exports: export * from './module'
 pub const REEXPORT_QUERY_SRC: &str = r#"
 ; Named re-export: export { foo, bar } from './module'
+; Also captures optional alias for: export { foo as bar } from './module'
 (export_statement
   (export_clause
     (export_specifier
-      name: (identifier) @specifier_name))
+      name: (identifier) @specifier_name
+      alias: (identifier)? @alias_name))
   source: (string
     (string_fragment) @source_path))
 

@@ -483,6 +483,28 @@ fn reexport_raw_path() {
     );
 }
 
+#[test]
+fn reexport_aliased_uses_public_name() {
+    // WR-02 regression: export { foo as bar } should use "bar" (the alias) as source_id,
+    // not "foo" (the original name), since consumers import "bar".
+    let extractor = TsExtractor::new();
+    let source = r#"export { foo as bar } from './module';"#;
+    let result = extractor.extract(Path::new("index.ts"), source);
+
+    let reexport_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::ReExport)
+        .collect();
+    assert_eq!(reexport_edges.len(), 1, "Expected exactly 1 reexport edge. Got: {:?}", reexport_edges);
+
+    let edge = &reexport_edges[0];
+    // source_id should use the alias (public name)
+    assert_eq!(edge.source_id, "index.ts::bar",
+        "Aliased re-export source_id should use alias 'bar', not original 'foo'. Got: {}", edge.source_id);
+    // target_id should use the original name (what the source module exports)
+    assert_eq!(edge.target_id, "./module::foo",
+        "Aliased re-export target_id should use original name 'foo'. Got: {}", edge.target_id);
+}
+
 // PARS-09 and PARS-10 are implicit -- verified by import_raw_alias_path and reexport_raw_path tests
 // Phase 2 emits raw paths; Phase 3 indexer resolves them.
 
