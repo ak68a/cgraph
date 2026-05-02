@@ -56,7 +56,16 @@ Plans:
   4. Type reference edges (extends, implements, uses-type) are present
   5. A symbol re-exported through one or more barrel files traces back to its defining file, not the barrel
   6. tsconfig `paths` aliases in import statements resolve to the correct file path
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — Crate scaffold, workspace integration, test fixtures, TsExtractor struct with query compilation
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-02-PLAN.md — Symbol extraction (Pass 1): exported functions, types, classes, enums, hooks
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 02-03-PLAN.md — Edge extraction (Pass 2): imports, calls, type refs, re-exports
 
 ### Phase 3: Indexer & Analysis Pipeline
 **Goal**: The indexer crawls a project directory, feeds all files through the extractor registry, assembles the full graph in memory, and runs analysis algorithms so dead code, blast radius, and circular dependencies are available as queryable data — all without any browser or server.
@@ -181,8 +190,8 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Planning complete | - |
-| 2. TypeScript Extractor | 0/TBD | Not started | - |
+| 1. Foundation | 3/3 | Complete | - |
+| 2. TypeScript Extractor | 0/3 | Planning complete | - |
 | 3. Indexer & Analysis Pipeline | 0/TBD | Not started | - |
 | 4. HTTP Server & Browser Shell | 0/TBD | Not started | - |
 | 5. Graph Interaction | 0/TBD | Not started | - |
