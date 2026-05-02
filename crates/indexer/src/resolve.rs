@@ -116,7 +116,7 @@ fn strip_json_comments(content: &str) -> String {
 /// handle `..` segments without `canonicalize` (which requires files to exist).
 ///
 /// For non-relative paths (bare modules, already alias-resolved), returns as-is.
-pub fn normalize_import_path(source_file: &Path, raw_import: &str, project_root: &Path) -> PathBuf {
+pub fn normalize_import_path(source_file: &Path, raw_import: &str, _project_root: &Path) -> PathBuf {
     if raw_import.starts_with("./") || raw_import.starts_with("../") {
         // Relative path: resolve against source file's parent directory
         let base = source_file.parent().unwrap_or(source_file);
@@ -139,10 +139,7 @@ pub fn normalize_import_path(source_file: &Path, raw_import: &str, project_root:
         }
         let normalized: PathBuf = components.iter().collect();
 
-        // Make relative to project root
-        normalized.strip_prefix(project_root)
-            .map(|p| p.to_path_buf())
-            .unwrap_or(normalized)
+        normalized
     } else {
         // Non-relative path (bare module or already resolved)
         PathBuf::from(raw_import)
@@ -395,16 +392,15 @@ mod tests {
         let source_file = Path::new("/project/src/hooks/useToggle.ts");
         let project_root = Path::new("/project");
         let result = normalize_import_path(source_file, "../utils/format", project_root);
-        assert_eq!(result, PathBuf::from("src/utils/format"));
+        assert_eq!(result, PathBuf::from("/project/src/utils/format"));
     }
 
     #[test]
     fn test_normalize_parent_dir_segments() {
-        // Test that .. segments are correctly resolved without canonicalize
         let source_file = Path::new("/project/src/deep/nested/file.ts");
         let project_root = Path::new("/project");
         let result = normalize_import_path(source_file, "../../utils/helper", project_root);
-        assert_eq!(result, PathBuf::from("src/utils/helper"));
+        assert_eq!(result, PathBuf::from("/project/src/utils/helper"));
     }
 
     #[test]

@@ -18,6 +18,7 @@ pub enum SymbolKind {
     Interface,
     Hook,
     Enum,
+    Module,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

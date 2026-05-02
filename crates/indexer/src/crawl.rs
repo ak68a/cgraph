@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::fs;
 use thiserror::Error;
-use cgraph_core::{Extractor, SymbolEdge, scan_directory};
+use cgraph_core::{Extractor, SymbolEdge, SymbolNode, SymbolKind, scan_directory};
 use crate::graph::CodeGraph;
 
 /// Errors that can occur during indexing.
@@ -53,7 +53,7 @@ impl Indexer {
         let mut all_edges: Vec<SymbolEdge> = Vec::new();
 
         // Phase 1: Extract symbols and collect edges from all parseable files
-        for (path, _lang) in &detection.parseable {
+        for (path, lang) in &detection.parseable {
             // Read file content (D-18: indexer owns file I/O)
             let source = match fs::read_to_string(path) {
                 Ok(s) => s,
@@ -77,6 +77,20 @@ impl Indexer {
                 eprintln!("warn: {}", err);
             }
 
+            let file_path_str = path.to_string_lossy().to_string();
+
+            // Add a file-level module node so import/call edges have a source
+            code_graph.add_symbol(SymbolNode {
+                id: file_path_str.clone(),
+                name: path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+                kind: SymbolKind::Module,
+                file_path: file_path_str,
+                language: lang.clone(),
+                line_start: 0,
+                line_end: 0,
+                is_exported: false,
+            });
+
             // Add all symbol nodes to the graph
             for node in result.nodes {
                 code_graph.add_symbol(node);
@@ -92,9 +106,18 @@ impl Indexer {
         let aliases = crate::resolve::TsConfigAliases::load(project_root);
         crate::resolve::resolve_edges(&mut all_edges, &mut code_graph, project_root, &aliases);
 
-        // Phase 2: Add resolved edges to the graph.
-        // Edges with unknown targets (e.g., unresolved::*, third-party imports)
-        // will be silently dropped by CodeGraph::add_edge.
+        // Phase 2: Remap pseudo-node edge sources to file-level module nodes,
+        // then add resolved edges to the graph.
+        // Import edges use "file::<import>" and Call edges use "file::<call>" as
+        // source IDs — these aren't real symbols. Remap them to the file's Module node.
+        for edge in &mut all_edges {
+            if let Some((file_part, symbol_part)) = edge.source_id.rsplit_once("::") {
+                if symbol_part.starts_with('<') {
+                    edge.source_id = file_part.to_string();
+                }
+            }
+        }
+
         for edge in all_edges {
             code_graph.add_edge(&edge.source_id, &edge.target_id, edge.kind.clone());
         }
