@@ -752,6 +752,128 @@ mod tests {
     }
 
     #[test]
+    fn test_tsconfig_base_url_resolve() {
+        // TsConfigAliases with base_url=Some("src") and empty aliases resolves
+        // bare specifiers like "lib/build-url" to "src/lib/build-url".
+        // Relative paths ("./foo") are NOT modified by baseUrl.
+        let aliases = TsConfigAliases {
+            aliases: HashMap::new(),
+            base_url: Some("src".to_string()),
+        };
+        // Bare specifier should be resolved via baseUrl
+        assert_eq!(aliases.resolve("lib/build-url"), "src/lib/build-url");
+        // Relative paths should NOT be modified
+        assert_eq!(aliases.resolve("./local"), "./local");
+        assert_eq!(aliases.resolve("../utils/format"), "../utils/format");
+        // Absolute paths should NOT be modified
+        assert_eq!(aliases.resolve("/absolute/path"), "/absolute/path");
+    }
+
+    #[test]
+    fn test_tsconfig_base_url_with_paths() {
+        // When both baseUrl="src" and paths={"@/*": ["src/*"]} exist, paths take priority.
+        // "@/utils" resolves to "src/utils" via paths.
+        // "lib/format" resolves to "src/lib/format" via baseUrl (no path match).
+        let aliases = TsConfigAliases {
+            aliases: HashMap::from([("@/".to_string(), vec!["src/".to_string()])]),
+            base_url: Some("src".to_string()),
+        };
+        // Path alias takes priority
+        assert_eq!(aliases.resolve("@/utils"), "src/utils");
+        // Bare specifier falls through to baseUrl
+        assert_eq!(aliases.resolve("lib/format"), "src/lib/format");
+    }
+
+    #[test]
+    fn test_tsconfig_extends_loads_parent() {
+        // Create temp files: tsconfig.json with extends and tsconfig.base.json with paths.
+        // TsConfigAliases::load should resolve the extends and inherit the paths.
+        let tmp = std::env::temp_dir().join("cgraph_test_extends_loads_parent");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        std::fs::write(
+            tmp.join("tsconfig.json"),
+            r#"{"extends": "./tsconfig.base.json"}"#,
+        ).unwrap();
+
+        std::fs::write(
+            tmp.join("tsconfig.base.json"),
+            r#"{"compilerOptions": {"paths": {"@/*": ["src/*"]}}}"#,
+        ).unwrap();
+
+        let aliases = TsConfigAliases::load(&tmp);
+        assert_eq!(aliases.resolve("@/utils"), "src/utils");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_tsconfig_extends_child_overrides() {
+        // When child tsconfig has paths and parent has different paths,
+        // child paths take priority (override, not merge).
+        let tmp = std::env::temp_dir().join("cgraph_test_extends_child_overrides");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        std::fs::write(
+            tmp.join("tsconfig.json"),
+            r#"{"extends": "./tsconfig.base.json", "compilerOptions": {"paths": {"@/*": ["app/*"]}}}"#,
+        ).unwrap();
+
+        std::fs::write(
+            tmp.join("tsconfig.base.json"),
+            r#"{"compilerOptions": {"paths": {"@/*": ["src/*"]}}}"#,
+        ).unwrap();
+
+        let aliases = TsConfigAliases::load(&tmp);
+        // Child's "@/*" -> "app/*" should take priority over parent's "@/*" -> "src/*"
+        assert_eq!(aliases.resolve("@/utils"), "app/utils");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn test_tsconfig_multi_target() {
+        // TsConfigAliases with paths={"@/*": ["src/*", "lib/*"]}.
+        // resolve_candidates should return all possible candidates.
+        let aliases = TsConfigAliases {
+            aliases: HashMap::from([("@/".to_string(), vec!["src/".to_string(), "lib/".to_string()])]),
+            base_url: None,
+        };
+        let candidates = aliases.resolve_candidates("@/utils");
+        assert_eq!(candidates, vec!["src/utils".to_string(), "lib/utils".to_string()]);
+    }
+
+    #[test]
+    fn test_tsconfig_extends_circular_guard() {
+        // Create temp files where tsconfig.json extends tsconfig.base.json which extends tsconfig.json.
+        // Load should not infinite loop.
+        let tmp = std::env::temp_dir().join("cgraph_test_extends_circular");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        std::fs::write(
+            tmp.join("tsconfig.json"),
+            r#"{"extends": "./tsconfig.base.json", "compilerOptions": {"paths": {"@/*": ["src/*"]}}}"#,
+        ).unwrap();
+
+        std::fs::write(
+            tmp.join("tsconfig.base.json"),
+            r#"{"extends": "./tsconfig.json", "compilerOptions": {"baseUrl": "src"}}"#,
+        ).unwrap();
+
+        // This should NOT infinite loop — returns whatever was loaded before the cycle
+        let aliases = TsConfigAliases::load(&tmp);
+        // The child's paths should be present
+        assert_eq!(aliases.resolve("@/utils"), "src/utils");
+        // The parent's baseUrl should be inherited
+        assert!(aliases.base_url.is_some());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn test_barrel_chain_cycle_guard() {
         // Simulate circular barrel re-exports: A re-exports from B, B re-exports from A
         let mut graph = CodeGraph::new();
