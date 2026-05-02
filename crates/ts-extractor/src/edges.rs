@@ -248,13 +248,45 @@ fn extract_reexports(
                 }
             }
 
-            // Only emit star edge if no export_clause child (i.e., this is `export * from`)
-            let is_true_star = export_stmt_node.map_or(false, |stmt| {
+            // Distinguish three cases for Pattern 1 matches:
+            // 1. namespace_export child present: `export * as ns from './module'`
+            // 2. No export_clause and no namespace_export: true `export * from './module'`
+            // 3. export_clause present: named re-export already handled by Pattern 0 — skip
+            let has_export_clause = export_stmt_node.map_or(true, |stmt| {
                 let mut cursor2 = stmt.walk();
-                !stmt.children(&mut cursor2).any(|child| child.kind() == "export_clause")
+                stmt.children(&mut cursor2).any(|child| child.kind() == "export_clause")
+            });
+            let has_namespace_export = export_stmt_node.map_or(false, |stmt| {
+                let mut cursor2 = stmt.walk();
+                stmt.children(&mut cursor2).any(|child| child.kind() == "namespace_export")
             });
 
-            if is_true_star {
+            if has_namespace_export {
+                // `export * as ns from './module'` — emit ReExport with namespace name as source
+                // T-02-05-01: Validate namespace_export child node exists before extracting identifier
+                if let Some(stmt) = export_stmt_node {
+                    let mut ns_cursor = stmt.walk();
+                    let ns_name = stmt.children(&mut ns_cursor)
+                        .filter(|child| child.kind() == "namespace_export")
+                        .flat_map(|ns_node| {
+                            let mut inner = ns_node.walk();
+                            ns_node.children(&mut inner)
+                                .filter(|c| c.kind() == "identifier")
+                                .map(|c| &source[c.byte_range()])
+                                .collect::<Vec<_>>()
+                        })
+                        .next();
+                    if let (Some(ns), Some(path)) = (ns_name, star_path) {
+                        edges.push(SymbolEdge {
+                            source_id: format!("{}::{}", file_path, ns),
+                            target_id: format!("{}::*", path),
+                            kind: EdgeKind::ReExport,
+                            source_location: star_line,
+                        });
+                    }
+                }
+            } else if !has_export_clause {
+                // True star export: `export * from './module'`
                 if let Some(path) = star_path {
                     edges.push(SymbolEdge {
                         source_id: format!("{}::*", file_path),
@@ -264,6 +296,7 @@ fn extract_reexports(
                     });
                 }
             }
+            // else: has_export_clause — named re-export already handled by Pattern 0; skip
         }
     }
 }

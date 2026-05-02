@@ -5,14 +5,13 @@ pub mod classify;
 
 use std::path::Path;
 use tree_sitter::{Parser, Query, Language as TsLanguage};
-use tree_sitter_typescript::{LANGUAGE_TYPESCRIPT, LANGUAGE_TSX};
+use tree_sitter_typescript::LANGUAGE_TSX;
 use cgraph_core::{
     Extractor, ExtractionResult, ParseError,
-    Language, SymbolNode, SymbolEdge,
+    Language,
 };
 
 pub struct TsExtractor {
-    ts_lang: TsLanguage,
     tsx_lang: TsLanguage,
     // Queries compiled against TSX grammar (superset of TS - Pitfall 2 from research)
     symbol_query: Query,
@@ -25,7 +24,6 @@ pub struct TsExtractor {
 impl TsExtractor {
     pub fn new() -> Self {
         let tsx_lang: TsLanguage = LANGUAGE_TSX.into();
-        let ts_lang: TsLanguage = LANGUAGE_TYPESCRIPT.into();
 
         // Compile all queries against TSX grammar (superset of TypeScript, Pitfall 2).
         // This means the same queries work for both .ts and .tsx parse trees.
@@ -41,7 +39,6 @@ impl TsExtractor {
             .expect("reexport query compilation failed");
 
         Self {
-            ts_lang,
             tsx_lang,
             symbol_query,
             import_query,
