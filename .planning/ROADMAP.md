@@ -65,7 +65,7 @@ Plans:
 - [x] 02-02-PLAN.md — Symbol extraction (Pass 1): exported functions, types, classes, enums, hooks
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 02-03-PLAN.md — Edge extraction (Pass 2): imports, calls, type refs, re-exports
+- [x] 02-03-PLAN.md — Edge extraction (Pass 2): imports, calls, type refs, re-exports
 
 ### Phase 3: Indexer & Analysis Pipeline
 **Goal**: The indexer crawls a project directory, feeds all files through the extractor registry, assembles the full graph in memory, and runs analysis algorithms so dead code, blast radius, and circular dependencies are available as queryable data — all without any browser or server.
