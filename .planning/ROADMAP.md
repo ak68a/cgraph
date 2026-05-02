@@ -42,8 +42,8 @@ Plans:
 - [x] 01-01-PLAN.md — Workspace scaffold, core data model, language detection, extractor trait
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02-PLAN.md — Tree-sitter grammar linkage validation with fixture files
-- [ ] 01-03-PLAN.md — CLI binary crate with scan summary and smoke tests
+- [x] 01-02-PLAN.md — Tree-sitter grammar linkage validation with fixture files
+- [x] 01-03-PLAN.md — CLI binary crate with scan summary and smoke tests
 
 ### Phase 2: TypeScript Extractor
 **Goal**: Users can point cgraph at a TypeScript/React Native project and get a complete, accurate graph of all symbols and their relationships, including barrel re-exports resolved to their true source and tsconfig path aliases resolved to real file paths.
