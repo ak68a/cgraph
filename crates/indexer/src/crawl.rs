@@ -407,4 +407,103 @@ mod tests {
 
         fs::remove_dir_all(&tmp).ok();
     }
+
+    #[test]
+    fn test_tsconfig_extends_baseurl_integration() {
+        // End-to-end: tsconfig.json extends tsconfig.base.json which provides path aliases.
+        // tsconfig.json adds baseUrl="src". Tests that the full pipeline resolves both:
+        // - @lib/format -> src/lib/format.ts (via extends-inherited paths)
+        // - utils/helpers -> src/utils/helpers.ts (via baseUrl)
+        let tmp = std::env::temp_dir().join("cgraph_test_tsconfig_extends_baseurl");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::create_dir_all(tmp.join("src/lib")).unwrap();
+        fs::create_dir_all(tmp.join("src/utils")).unwrap();
+
+        // tsconfig.json: extends base, adds baseUrl
+        fs::write(
+            tmp.join("tsconfig.json"),
+            r#"{
+                "extends": "./tsconfig.base.json",
+                "compilerOptions": {
+                    "baseUrl": "src"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        // tsconfig.base.json: provides path aliases
+        fs::write(
+            tmp.join("tsconfig.base.json"),
+            r#"{
+                "compilerOptions": {
+                    "paths": {
+                        "@lib/*": ["src/lib/*"]
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        // src/lib/format.ts: exports formatDate
+        fs::write(
+            tmp.join("src/lib/format.ts"),
+            "export function formatDate(d: Date) { return d.toString(); }\n",
+        )
+        .unwrap();
+
+        // src/utils/helpers.ts: exports capitalize
+        fs::write(
+            tmp.join("src/utils/helpers.ts"),
+            "export function capitalize(s: string) { return s; }\n",
+        )
+        .unwrap();
+
+        // src/app.ts: imports from both using alias and baseUrl-relative paths
+        fs::write(
+            tmp.join("src/app.ts"),
+            concat!(
+                "import { formatDate } from '@lib/format';\n",
+                "import { capitalize } from 'utils/helpers';\n",
+                "export function main() { formatDate(new Date()); capitalize('hello'); }\n",
+            ),
+        )
+        .unwrap();
+
+        let indexer = Indexer::new(vec![Box::new(TsExtractor::new())]);
+        let graph = indexer.index(&tmp).unwrap();
+
+        // Should have at least 4 nodes: Module nodes + symbol nodes for all files
+        assert!(
+            graph.node_count() >= 4,
+            "expected at least 4 nodes, got {}",
+            graph.node_count()
+        );
+
+        // Should have at least 2 resolved edges (import/call edges from app.ts)
+        assert!(
+            graph.edge_count() >= 2,
+            "expected at least 2 edges, got {}",
+            graph.edge_count()
+        );
+
+        // Verify no edges target raw alias "@lib/format" or bare "utils/helpers"
+        // (aliases should have been resolved to actual file paths)
+        for edge_idx in graph.graph.edge_indices() {
+            let (_src, tgt) = graph.graph.edge_endpoints(edge_idx).unwrap();
+            let target_node = &graph.graph[tgt];
+            assert!(
+                !target_node.file_path.contains("@lib/"),
+                "edge should not target unresolved alias path, got file_path: {}",
+                target_node.file_path
+            );
+            assert!(
+                !target_node.id.starts_with("utils/helpers"),
+                "edge should not target bare unresolved baseUrl path, got id: {}",
+                target_node.id
+            );
+        }
+
+        fs::remove_dir_all(&tmp).ok();
+    }
 }
