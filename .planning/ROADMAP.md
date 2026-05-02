@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 3 plans
 Plans:
 **Wave 1**
-- [ ] 01-01-PLAN.md — Workspace scaffold, core data model, language detection, extractor trait
+- [x] 01-01-PLAN.md — Workspace scaffold, core data model, language detection, extractor trait
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Tree-sitter grammar linkage validation with fixture files
