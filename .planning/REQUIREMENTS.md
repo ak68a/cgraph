@@ -108,8 +108,8 @@
 | PARS-06 | Phase 2 | Pending |
 | PARS-07 | Phase 2 | Pending |
 | PARS-08 | Phase 2 | Pending |
-| PARS-09 | Phase 2 | Pending |
-| PARS-10 | Phase 2 | Pending |
+| PARS-09 | Phase 2 (raw edges), Phase 3 (resolution) | Pending |
+| PARS-10 | Phase 2 (raw paths), Phase 3 (resolution) | Pending |
 | PARS-11 | Phase 1 | Pending |
 | ANLS-01 | Phase 3 | Pending |
 | ANLS-02 | Phase 3 | Pending |
