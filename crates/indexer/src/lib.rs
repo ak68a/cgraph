@@ -5,3 +5,4 @@ pub mod analysis;
 
 pub use graph::CodeGraph;
 pub use crawl::{Indexer, IndexerError};
+pub use analysis::{DeadCodeResult, DeadCodeEntry, Confidence, CycleResult};
