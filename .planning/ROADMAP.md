@@ -74,7 +74,7 @@ Plans:
 ### Phase 3: Indexer & Analysis Pipeline
 **Goal**: The indexer crawls a project directory, feeds all files through the extractor registry, assembles the full graph in memory, and runs analysis algorithms so dead code, blast radius, and circular dependencies are available as queryable data — all without any browser or server.
 **Depends on**: Phase 2
-**Requirements**: ANLS-01, ANLS-02, ANLS-03, ANLS-04, ANLS-05, INFR-03
+**Requirements**: PARS-09, PARS-10, ANLS-01, ANLS-02, ANLS-03, ANLS-04, ANLS-05, INFR-03
 **Success Criteria** (what must be TRUE):
   1. After scanning a project, the CLI prints a summary line: files scanned, symbols found, edges found, and elapsed time
   2. Exported symbols with zero incoming edges are flagged as dead code; symbols re-exported through barrels are not falsely flagged
@@ -82,6 +82,8 @@ Plans:
   4. Given any symbol ID, the indexer returns the complete set of its transitive dependents (blast radius)
   5. Given any symbol ID, the indexer returns the complete set of things it transitively depends on
   6. Circular dependency chains between modules are detected and enumerable
+  7. Re-export chains through barrel files (e.g., index.ts re-exporting from nested modules) are resolved to the true defining file — the graph contains no intermediate barrel-only edges (PARS-09)
+  8. Import paths using tsconfig path aliases (e.g., @/components/Button) are resolved to the actual file path relative to the project root (PARS-10)
 **Plans**: TBD
 
 ### Phase 4: HTTP Server & Browser Shell
