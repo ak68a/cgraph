@@ -1,5 +1,8 @@
+use petgraph::algo::tarjan_scc;
+use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::visit::{Dfs, Reversed};
 use petgraph::Direction::Incoming;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use cgraph_core::SymbolKind;
 use crate::graph::CodeGraph;
@@ -248,6 +251,87 @@ pub fn dead_code(graph: &CodeGraph, project_root: &Path) -> DeadCodeResult {
     result
 }
 
+/// Compute the blast radius of a symbol (ANLS-04).
+///
+/// Returns all symbol IDs that transitively depend on the given symbol.
+/// Uses reversed DFS: follows edges backwards from the target to find all
+/// nodes that can reach it (i.e., all transitive dependents).
+pub fn blast_radius(graph: &CodeGraph, symbol_id: &str) -> Vec<String> {
+    let Some(start) = graph.get_index(symbol_id) else {
+        return Vec::new();
+    };
+    let reversed = Reversed(&graph.graph);
+    let mut dfs = Dfs::new(reversed, start);
+    let mut result = Vec::new();
+    while let Some(nx) = dfs.next(reversed) {
+        if nx != start {
+            result.push(graph.graph[nx].id.clone());
+        }
+    }
+    result
+}
+
+/// Compute transitive dependencies of a symbol (ANLS-05).
+///
+/// Returns all symbol IDs that the given symbol transitively depends on.
+/// Uses forward DFS: follows edges from the start symbol to find all
+/// reachable nodes (i.e., all transitive dependencies).
+pub fn transitive_deps(graph: &CodeGraph, symbol_id: &str) -> Vec<String> {
+    let Some(start) = graph.get_index(symbol_id) else {
+        return Vec::new();
+    };
+    let mut dfs = Dfs::new(&graph.graph, start);
+    let mut result = Vec::new();
+    while let Some(nx) = dfs.next(&graph.graph) {
+        if nx != start {
+            result.push(graph.graph[nx].id.clone());
+        }
+    }
+    result
+}
+
+/// Detect file-level circular dependencies (ANLS-03, D-42, D-46).
+///
+/// Projects the symbol-level graph onto file-level pairs, deduplicates edges,
+/// and runs Tarjan's SCC to find cycles. Only file-level cycles are reported;
+/// symbol-level mutual recursion is intentional and not flagged.
+pub fn detect_cycles(graph: &CodeGraph) -> CycleResult {
+    // Build a file-level directed graph
+    let mut file_graph: DiGraph<String, ()> = DiGraph::new();
+    let mut file_index: HashMap<String, NodeIndex> = HashMap::new();
+
+    // Add file nodes
+    for node_idx in graph.graph.node_indices() {
+        let node = &graph.graph[node_idx];
+        file_index
+            .entry(node.file_path.clone())
+            .or_insert_with(|| file_graph.add_node(node.file_path.clone()));
+    }
+
+    // Add file-level edges (deduplicated via update_edge)
+    for edge_idx in graph.graph.edge_indices() {
+        if let Some((src_idx, tgt_idx)) = graph.graph.edge_endpoints(edge_idx) {
+            let src_file = &graph.graph[src_idx].file_path;
+            let tgt_file = &graph.graph[tgt_idx].file_path;
+            // Only add edges between different files (D-42: same-file edges excluded)
+            if src_file != tgt_file {
+                let s = file_index[src_file];
+                let t = file_index[tgt_file];
+                file_graph.update_edge(s, t, ()); // update_edge prevents duplicate edges
+            }
+        }
+    }
+
+    // Run Tarjan's SCC; filter to components with size > 1 (actual cycles)
+    let cycles = tarjan_scc(&file_graph)
+        .into_iter()
+        .filter(|scc| scc.len() > 1)
+        .map(|scc| scc.iter().map(|&n| file_graph[n].clone()).collect())
+        .collect();
+
+    CycleResult { cycles }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,5 +465,151 @@ mod tests {
         assert_eq!(result.suspicious.len(), 1);
         assert_eq!(result.suspicious[0].symbol_id, "src/utils.ts::helperFn");
         assert!(matches!(result.suspicious[0].confidence, Confidence::Suspicious(ref reason) if reason.contains("unresolved call target")));
+    }
+
+    // --- Blast Radius Tests ---
+
+    #[test]
+    fn test_blast_radius_simple() {
+        let mut graph = CodeGraph::new();
+        // A -> B -> C (Import edges: A imports B, B imports C)
+        graph.add_symbol(make_node("a.ts::A", "a.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("b.ts::B", "b.ts", "B", SymbolKind::Function, true));
+        graph.add_symbol(make_node("c.ts::C", "c.ts", "C", SymbolKind::Function, true));
+        graph.add_edge("a.ts::A", "b.ts::B", EdgeKind::Import);
+        graph.add_edge("b.ts::B", "c.ts::C", EdgeKind::Import);
+
+        // Blast radius of C: both A and B transitively depend on C
+        let radius = blast_radius(&graph, "c.ts::C");
+        assert_eq!(radius.len(), 2);
+        assert!(radius.contains(&"a.ts::A".to_string()));
+        assert!(radius.contains(&"b.ts::B".to_string()));
+
+        // Blast radius of A: nothing depends on A
+        let radius_a = blast_radius(&graph, "a.ts::A");
+        assert!(radius_a.is_empty());
+    }
+
+    #[test]
+    fn test_blast_radius_unknown_symbol() {
+        let graph = CodeGraph::new();
+        let result = blast_radius(&graph, "nonexistent::id");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_blast_radius_diamond() {
+        let mut graph = CodeGraph::new();
+        // Diamond: A -> B, A -> C, B -> D, C -> D
+        graph.add_symbol(make_node("a.ts::A", "a.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("b.ts::B", "b.ts", "B", SymbolKind::Function, true));
+        graph.add_symbol(make_node("c.ts::C", "c.ts", "C", SymbolKind::Function, true));
+        graph.add_symbol(make_node("d.ts::D", "d.ts", "D", SymbolKind::Function, true));
+        graph.add_edge("a.ts::A", "b.ts::B", EdgeKind::Import);
+        graph.add_edge("a.ts::A", "c.ts::C", EdgeKind::Import);
+        graph.add_edge("b.ts::B", "d.ts::D", EdgeKind::Import);
+        graph.add_edge("c.ts::C", "d.ts::D", EdgeKind::Import);
+
+        // Blast radius of D: A, B, C all transitively depend on D
+        let radius = blast_radius(&graph, "d.ts::D");
+        assert_eq!(radius.len(), 3);
+        assert!(radius.contains(&"a.ts::A".to_string()));
+        assert!(radius.contains(&"b.ts::B".to_string()));
+        assert!(radius.contains(&"c.ts::C".to_string()));
+    }
+
+    // --- Transitive Deps Tests ---
+
+    #[test]
+    fn test_transitive_deps_simple() {
+        let mut graph = CodeGraph::new();
+        // A -> B -> C
+        graph.add_symbol(make_node("a.ts::A", "a.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("b.ts::B", "b.ts", "B", SymbolKind::Function, true));
+        graph.add_symbol(make_node("c.ts::C", "c.ts", "C", SymbolKind::Function, true));
+        graph.add_edge("a.ts::A", "b.ts::B", EdgeKind::Import);
+        graph.add_edge("b.ts::B", "c.ts::C", EdgeKind::Import);
+
+        // Transitive deps of A: B and C
+        let deps = transitive_deps(&graph, "a.ts::A");
+        assert_eq!(deps.len(), 2);
+        assert!(deps.contains(&"b.ts::B".to_string()));
+        assert!(deps.contains(&"c.ts::C".to_string()));
+
+        // Transitive deps of C: empty (C has no outgoing edges)
+        let deps_c = transitive_deps(&graph, "c.ts::C");
+        assert!(deps_c.is_empty());
+    }
+
+    #[test]
+    fn test_transitive_deps_unknown_symbol() {
+        let graph = CodeGraph::new();
+        let result = transitive_deps(&graph, "nonexistent::id");
+        assert!(result.is_empty());
+    }
+
+    // --- Cycle Detection Tests ---
+
+    #[test]
+    fn test_cycle_detection_simple() {
+        let mut graph = CodeGraph::new();
+        // file_a has node A, file_b has node B. A imports B, B imports A.
+        graph.add_symbol(make_node("file_a.ts::A", "file_a.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("file_b.ts::B", "file_b.ts", "B", SymbolKind::Function, true));
+        graph.add_edge("file_a.ts::A", "file_b.ts::B", EdgeKind::Import);
+        graph.add_edge("file_b.ts::B", "file_a.ts::A", EdgeKind::Import);
+
+        let result = detect_cycles(&graph);
+        assert_eq!(result.cycles.len(), 1);
+        let cycle = &result.cycles[0];
+        assert_eq!(cycle.len(), 2);
+        assert!(cycle.contains(&"file_a.ts".to_string()));
+        assert!(cycle.contains(&"file_b.ts".to_string()));
+    }
+
+    #[test]
+    fn test_no_false_cycles() {
+        let mut graph = CodeGraph::new();
+        // Linear chain: A -> B -> C (no cycle)
+        graph.add_symbol(make_node("a.ts::A", "a.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("b.ts::B", "b.ts", "B", SymbolKind::Function, true));
+        graph.add_symbol(make_node("c.ts::C", "c.ts", "C", SymbolKind::Function, true));
+        graph.add_edge("a.ts::A", "b.ts::B", EdgeKind::Import);
+        graph.add_edge("b.ts::B", "c.ts::C", EdgeKind::Import);
+
+        let result = detect_cycles(&graph);
+        assert!(result.cycles.is_empty());
+    }
+
+    #[test]
+    fn test_cycle_detection_triangle() {
+        let mut graph = CodeGraph::new();
+        // A -> B -> C -> A (triangle cycle)
+        graph.add_symbol(make_node("a.ts::A", "a.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("b.ts::B", "b.ts", "B", SymbolKind::Function, true));
+        graph.add_symbol(make_node("c.ts::C", "c.ts", "C", SymbolKind::Function, true));
+        graph.add_edge("a.ts::A", "b.ts::B", EdgeKind::Import);
+        graph.add_edge("b.ts::B", "c.ts::C", EdgeKind::Import);
+        graph.add_edge("c.ts::C", "a.ts::A", EdgeKind::Import);
+
+        let result = detect_cycles(&graph);
+        assert_eq!(result.cycles.len(), 1);
+        let cycle = &result.cycles[0];
+        assert_eq!(cycle.len(), 3);
+        assert!(cycle.contains(&"a.ts".to_string()));
+        assert!(cycle.contains(&"b.ts".to_string()));
+        assert!(cycle.contains(&"c.ts".to_string()));
+    }
+
+    #[test]
+    fn test_cycle_ignores_self_file_edges() {
+        let mut graph = CodeGraph::new();
+        // Two nodes in same file with edge between them -- no cycle at file level
+        graph.add_symbol(make_node("same.ts::A", "same.ts", "A", SymbolKind::Function, true));
+        graph.add_symbol(make_node("same.ts::B", "same.ts", "B", SymbolKind::Function, true));
+        graph.add_edge("same.ts::A", "same.ts::B", EdgeKind::Call);
+
+        let result = detect_cycles(&graph);
+        assert!(result.cycles.is_empty());
     }
 }
