@@ -17,31 +17,79 @@ pub struct TsConfigAliases {
 impl TsConfigAliases {
     /// Load tsconfig.json from the project root and extract path aliases.
     ///
+    /// Follows `extends` chains with cycle guard (T-03-10, T-03-11).
     /// On file read error or JSON parse error, returns empty aliases (D-13).
     /// T-03-07: Do not expose file contents in error messages.
     pub fn load(project_root: &Path) -> Self {
         let tsconfig_path = project_root.join("tsconfig.json");
-        let Ok(content) = std::fs::read_to_string(&tsconfig_path) else {
-            return Self { aliases: HashMap::new(), base_url: None };
+        let mut visited = HashSet::new();
+        let (aliases, base_url) = Self::load_tsconfig_from_path(&tsconfig_path, &mut visited);
+        Self { aliases, base_url }
+    }
+
+    /// Internal helper: load a tsconfig from a specific path, following `extends` chains.
+    ///
+    /// Uses a `visited` set to prevent infinite loops on circular extends (T-03-10).
+    /// Each file is visited at most once. Resolve extends paths relative to the
+    /// current tsconfig's directory (T-03-11: no absolute path injection).
+    fn load_tsconfig_from_path(
+        tsconfig_path: &Path,
+        visited: &mut HashSet<PathBuf>,
+    ) -> (HashMap<String, Vec<String>>, Option<String>) {
+        // Canonicalize for cycle detection (resolve symlinks, normalize)
+        let canonical = tsconfig_path.canonicalize().unwrap_or_else(|_| tsconfig_path.to_path_buf());
+
+        // Cycle guard: if already visited, return empty
+        if visited.contains(&canonical) {
+            return (HashMap::new(), None);
+        }
+        visited.insert(canonical.clone());
+
+        // Read file content
+        let Ok(content) = std::fs::read_to_string(tsconfig_path) else {
+            return (HashMap::new(), None);
         };
 
-        // Strip single-line comments before parsing (Pitfall 1: JSONC support).
-        // This is a simple pass that removes `// ...` to end-of-line while respecting
-        // string literals (tracks whether we're inside a quoted string).
+        // Strip comments (JSONC support)
         let stripped = strip_json_comments(&content);
 
         let Ok(json): Result<Value, _> = serde_json::from_str(&stripped) else {
             eprintln!("warn: could not parse tsconfig.json");
-            return Self { aliases: HashMap::new(), base_url: None };
+            return (HashMap::new(), None);
         };
 
-        let compiler_options = &json["compilerOptions"];
-        let base_url = compiler_options["baseUrl"].as_str().map(String::from);
-        let mut aliases = HashMap::new();
+        // Step 1: If extends field exists, recursively load parent config first
+        let (mut aliases, mut base_url) = if let Some(extends_value) = json.get("extends") {
+            if let Some(extends_str) = extends_value.as_str() {
+                // Resolve extends path relative to current tsconfig's directory
+                let tsconfig_dir = tsconfig_path.parent().unwrap_or(Path::new("."));
+                let parent_path = tsconfig_dir.join(extends_str);
+                // Add .json extension if not present
+                let parent_path = if parent_path.extension().is_none() {
+                    parent_path.with_extension("json")
+                } else {
+                    parent_path
+                };
+                Self::load_tsconfig_from_path(&parent_path, visited)
+            } else {
+                (HashMap::new(), None)
+            }
+        } else {
+            (HashMap::new(), None)
+        };
 
+        // Step 2: Override with child's values (child wins on conflict)
+        let compiler_options = &json["compilerOptions"];
+
+        // Child's baseUrl overrides parent's
+        if let Some(bu) = compiler_options["baseUrl"].as_str() {
+            base_url = Some(bu.to_string());
+        }
+
+        // Child's paths override parent's (full override, not merge)
         if let Some(paths) = compiler_options["paths"].as_object() {
+            let mut child_aliases = HashMap::new();
             for (alias, targets) in paths {
-                // alias like "@/*" -> strip trailing "*" -> "@/"
                 let prefix = alias.trim_end_matches('*').to_string();
                 let resolved: Vec<String> = targets
                     .as_array()
@@ -50,26 +98,55 @@ impl TsConfigAliases {
                     .filter_map(|v| v.as_str())
                     .map(|s| s.trim_end_matches('*').to_string())
                     .collect();
-                aliases.insert(prefix, resolved);
+                child_aliases.insert(prefix, resolved);
             }
+            // Child paths fully replace parent paths
+            aliases = child_aliases;
         }
 
-        Self { aliases, base_url }
+        (aliases, base_url)
     }
 
-    /// Resolve a raw import path by substituting alias prefixes.
+    /// Resolve a raw import path by substituting alias prefixes, then baseUrl.
     ///
-    /// If no alias matches, returns the path unchanged.
+    /// Priority:
+    /// 1. Alias prefix matching (paths) — if any alias matches, return that result
+    /// 2. baseUrl for bare specifiers (not starting with "." or "/")
+    /// 3. Return raw_path unchanged
     pub fn resolve(&self, raw_path: &str) -> String {
+        // First candidate from resolve_candidates
+        self.resolve_candidates(raw_path).into_iter().next().unwrap_or_else(|| raw_path.to_string())
+    }
+
+    /// Return ALL possible resolutions for a raw import path.
+    ///
+    /// Returns one candidate per path target (alias match), plus baseUrl variant.
+    /// If nothing matches, returns vec![raw_path].
+    pub fn resolve_candidates(&self, raw_path: &str) -> Vec<String> {
+        // Try alias prefix matching first
         for (prefix, targets) in &self.aliases {
             if raw_path.starts_with(prefix.as_str()) {
-                if let Some(first_target) = targets.first() {
-                    let suffix = &raw_path[prefix.len()..];
-                    return format!("{}{}", first_target, suffix);
+                let suffix = &raw_path[prefix.len()..];
+                let candidates: Vec<String> = targets
+                    .iter()
+                    .map(|target| format!("{}{}", target, suffix))
+                    .collect();
+                if !candidates.is_empty() {
+                    return candidates;
                 }
             }
         }
-        raw_path.to_string()
+
+        // If no alias matched AND path is a bare specifier (not starting with "." or "/"),
+        // AND base_url is set, prepend baseUrl
+        if let Some(ref base_url) = self.base_url {
+            if !raw_path.starts_with('.') && !raw_path.starts_with('/') {
+                return vec![format!("{}/{}", base_url, raw_path)];
+            }
+        }
+
+        // No transformation
+        vec![raw_path.to_string()]
     }
 }
 
@@ -148,6 +225,10 @@ pub fn normalize_import_path(source_file: &Path, raw_import: &str, _project_root
 
 /// Resolve a file path from a raw import: apply alias substitution then normalize.
 ///
+/// Tries all candidates from alias resolution (multi-target support) and returns the
+/// first one that matches a node in the graph. Falls back to the first candidate if
+/// none match.
+///
 /// T-03-04 mitigation: After alias substitution, verify resolved path does not escape
 /// project root. If it escapes, return the raw path (edge will be silently dropped).
 pub fn resolve_file_path(
@@ -155,26 +236,66 @@ pub fn resolve_file_path(
     raw_import: &str,
     project_root: &Path,
     aliases: &TsConfigAliases,
+    graph: &CodeGraph,
+    symbol: &str,
 ) -> String {
-    // Apply alias resolution first
-    let aliased = aliases.resolve(raw_import);
+    let candidates = aliases.resolve_candidates(raw_import);
 
-    // Normalize the path
-    let normalized = normalize_import_path(source_file, &aliased, project_root);
+    let mut first_valid: Option<String> = None;
 
-    // Convert to string with forward slashes (Windows compat)
-    let result = normalized.to_string_lossy().replace('\\', "/");
+    for aliased in &candidates {
+        // Normalize the path
+        let normalized = normalize_import_path(source_file, aliased, project_root);
 
-    // T-03-04: Verify path does not escape project root after alias substitution.
-    // If the resolved path is absolute and not under project_root, discard it.
-    if Path::new(&result).is_absolute() {
-        if !result.starts_with(&project_root.to_string_lossy().as_ref()) {
-            eprintln!("warn: resolved path escapes project root: {}", raw_import);
-            return raw_import.to_string();
+        // Convert to string with forward slashes (Windows compat)
+        let result = normalized.to_string_lossy().replace('\\', "/");
+
+        // T-03-04: Verify path does not escape project root after alias substitution.
+        if Path::new(&result).is_absolute() {
+            if !result.starts_with(&project_root.to_string_lossy().as_ref()) {
+                continue;
+            }
+        }
+
+        // Try extension resolution for this candidate
+        let resolved = resolve_extension(&result, symbol, graph);
+
+        // Check if this resolved path exists in the graph
+        let test_id = format!("{}::{}", resolved, symbol);
+        if graph.get_index(&test_id).is_some() {
+            return resolved;
+        }
+
+        // Also check if any node has this file_path
+        let found_in_graph = graph.graph.node_indices().any(|idx| {
+            graph.graph[idx].file_path == resolved
+        });
+        if found_in_graph {
+            return resolved;
+        }
+
+        // Track first valid candidate as fallback
+        if first_valid.is_none() {
+            first_valid = Some(resolved);
         }
     }
 
-    result
+    // Fall back to first candidate if none matched graph
+    first_valid.unwrap_or_else(|| {
+        // Legacy fallback: single resolve
+        let aliased = aliases.resolve(raw_import);
+        let normalized = normalize_import_path(source_file, &aliased, project_root);
+        let result = normalized.to_string_lossy().replace('\\', "/");
+
+        if Path::new(&result).is_absolute() {
+            if !result.starts_with(&project_root.to_string_lossy().as_ref()) {
+                eprintln!("warn: resolved path escapes project root: {}", raw_import);
+                return raw_import.to_string();
+            }
+        }
+
+        result
+    })
 }
 
 /// Resolve unresolved:: Call and TypeRef edge targets by matching called/referenced names
@@ -314,20 +435,34 @@ pub fn resolve_edges(
             None => continue,
         };
 
-        // Only resolve paths that look like relative imports or alias paths
-        // Absolute paths (already in the graph as file paths) don't need resolution
-        if target_raw_path.starts_with('.')
+        // Resolve paths that look like relative imports, alias paths, or bare specifiers
+        // when baseUrl is set. Absolute paths (already in the graph as file paths) don't need resolution.
+        let needs_resolution = target_raw_path.starts_with('.')
             || aliases.aliases.keys().any(|prefix| target_raw_path.starts_with(prefix.as_str()))
-        {
+            || (aliases.base_url.is_some() && !target_raw_path.starts_with('/') && !target_raw_path.starts_with('.'));
+
+        if needs_resolution {
             let resolved = resolve_file_path(
                 Path::new(&source_file_path),
                 target_raw_path,
                 project_root,
                 aliases,
+                graph,
+                target_symbol,
             );
 
-            // Try extension resolution: if no known extension, try .ts, .tsx, /index.ts, /index.tsx
-            let final_path = resolve_extension(&resolved, target_symbol, graph);
+            // resolve_file_path now handles extension resolution internally for multi-target
+            // but for single-candidate paths (relative imports), we still need extension resolution
+            let final_path = if resolved == target_raw_path
+                || resolved.ends_with(".ts")
+                || resolved.ends_with(".tsx")
+                || resolved.ends_with(".mts")
+                || resolved.ends_with(".cts")
+            {
+                resolved
+            } else {
+                resolve_extension(&resolved, target_symbol, graph)
+            };
 
             edge.target_id = format!("{}::{}", final_path, target_symbol);
         }
