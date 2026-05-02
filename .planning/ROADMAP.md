@@ -62,7 +62,7 @@ Plans:
 - [x] 02-01-PLAN.md — Crate scaffold, workspace integration, test fixtures, TsExtractor struct with query compilation
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 02-02-PLAN.md — Symbol extraction (Pass 1): exported functions, types, classes, enums, hooks
+- [x] 02-02-PLAN.md — Symbol extraction (Pass 1): exported functions, types, classes, enums, hooks
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 02-03-PLAN.md — Edge extraction (Pass 2): imports, calls, type refs, re-exports
