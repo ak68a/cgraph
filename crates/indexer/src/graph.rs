@@ -27,6 +27,9 @@ impl CodeGraph {
     /// Returns the petgraph NodeIndex for the inserted node.
     pub fn add_symbol(&mut self, node: SymbolNode) -> NodeIndex {
         let id = node.id.clone();
+        if let Some(&existing_idx) = self.node_index.get(&id) {
+            return existing_idx;
+        }
         let idx = self.graph.add_node(node);
         self.node_index.insert(id, idx);
         idx

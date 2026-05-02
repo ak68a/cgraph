@@ -342,8 +342,7 @@ fn resolve_extension(resolved_path: &str, symbol: &str, graph: &CodeGraph) -> St
 ///
 /// Returns None if the ID doesn't contain "::".
 fn split_id(id: &str) -> Option<(&str, &str)> {
-    // Find the first "::" -- file paths don't contain "::" but the separator does
-    id.find("::").map(|pos| (&id[..pos], &id[pos + 2..]))
+    id.rsplit_once("::")
 }
 
 #[cfg(test)]
