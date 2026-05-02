@@ -7,6 +7,11 @@ export interface UserType {
 
 export type UserRole = 'admin' | 'user' | 'guest';
 
+export const UserSchema = {
+    type: 'object',
+    required: ['id', 'name', 'email', 'role'],
+};
+
 export enum Permission {
     Read = 'read',
     Write = 'write',
