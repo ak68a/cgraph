@@ -74,6 +74,12 @@ pub fn extract_symbols(
         }
     }
 
+    // Deduplicate symbols with the same id (handles TypeScript function overloads).
+    // Keep the first occurrence (which has the broadest line span for overloads).
+    // T-02-05-02: O(n) HashSet allocation — bounded by file size (tree-sitter handles large files)
+    let mut seen_ids = std::collections::HashSet::new();
+    nodes.retain(|node| seen_ids.insert(node.id.clone()));
+
     // Also extract non-exported top-level functions for intra-file call edges
     extract_non_exported_functions(root, source, file_path, language, &mut nodes);
 

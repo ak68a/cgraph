@@ -460,6 +460,64 @@ fn reexport_raw_path() {
 // PARS-09 and PARS-10 are implicit -- verified by import_raw_alias_path and reexport_raw_path tests
 // Phase 2 emits raw paths; Phase 3 indexer resolves them.
 
+#[test]
+fn namespace_reexport_not_star() {
+    // export * as ns from './module' should NOT produce a star ::* -> ::* edge
+    let extractor = TsExtractor::new();
+    let source = r#"export * as Utils from './utils';"#;
+    let result = extractor.extract(Path::new("index.ts"), source);
+
+    let reexport_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::ReExport)
+        .collect();
+
+    // Should have exactly 1 edge: namespace re-export
+    assert_eq!(reexport_edges.len(), 1, "Expected 1 namespace reexport edge. Got: {:?}", reexport_edges);
+
+    let edge = &reexport_edges[0];
+    // source_id should be "index.ts::Utils" (the namespace name, NOT ::*)
+    assert_eq!(edge.source_id, "index.ts::Utils",
+        "Namespace re-export source_id should use namespace name, not ::*. Got: {}", edge.source_id);
+    // target_id should be "./utils::*" (everything from the module)
+    assert_eq!(edge.target_id, "./utils::*",
+        "Namespace re-export target_id should be path::*. Got: {}", edge.target_id);
+}
+
+#[test]
+fn star_reexport_still_works() {
+    // Regression: plain export * from should still work after namespace fix
+    let extractor = TsExtractor::new();
+    let source = r#"export * from './helpers';"#;
+    let result = extractor.extract(Path::new("index.ts"), source);
+
+    let star_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::ReExport && e.source_id.contains("::*"))
+        .collect();
+    assert_eq!(star_edges.len(), 1, "Expected 1 star reexport edge. Got: {:?}", star_edges);
+    assert_eq!(star_edges[0].target_id, "./helpers::*");
+}
+
+#[test]
+fn overload_dedup() {
+    // TypeScript function overloads should produce a single SymbolNode
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function greet(name: string): string;
+        export function greet(name: string, greeting: string): string;
+        export function greet(name: string, greeting?: string): string {
+            return (greeting || "Hello") + ", " + name;
+        }
+    "#;
+    let result = extractor.extract(Path::new("overloads.ts"), source);
+
+    let greet_nodes: Vec<_> = result.nodes.iter()
+        .filter(|n| n.name == "greet")
+        .collect();
+    assert_eq!(greet_nodes.len(), 1,
+        "Overloaded function 'greet' should produce exactly 1 SymbolNode. Got: {}",
+        greet_nodes.len());
+}
+
 // --- Full Integration Test ---
 
 #[test]
