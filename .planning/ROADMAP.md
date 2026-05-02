@@ -68,8 +68,8 @@ Plans:
 - [x] 02-03-PLAN.md — Edge extraction (Pass 2): imports, calls, type refs, re-exports
 
 **Wave 4** *(gap closure)*
-- [ ] 02-04-PLAN.md — Reassign PARS-09, PARS-10 to Phase 3 in ROADMAP and REQUIREMENTS docs
-- [ ] 02-05-PLAN.md — Fix anti-patterns: dead code warnings, namespace re-export misclassification, overload dedup
+- [x] 02-04-PLAN.md — Reassign PARS-09, PARS-10 to Phase 3 in ROADMAP and REQUIREMENTS docs
+- [x] 02-05-PLAN.md — Fix anti-patterns: dead code warnings, namespace re-export misclassification, overload dedup
 
 ### Phase 3: Indexer & Analysis Pipeline
 **Goal**: The indexer crawls a project directory, feeds all files through the extractor registry, assembles the full graph in memory, and runs analysis algorithms so dead code, blast radius, and circular dependencies are available as queryable data — all without any browser or server.
