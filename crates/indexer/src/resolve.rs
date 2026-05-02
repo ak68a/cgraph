@@ -177,6 +177,108 @@ pub fn resolve_file_path(
     result
 }
 
+/// Resolve unresolved:: Call and TypeRef edge targets by matching called/referenced names
+/// to exported symbols in the graph.
+///
+/// This function runs after resolve_edges() has resolved path-based imports and barrel chains,
+/// so the graph already contains all symbol nodes. It matches unresolved targets by name
+/// against exported symbols, using import context for disambiguation when multiple matches exist.
+///
+/// Gap Closure: This resolves the ~75% false-positive dead code issue caused by unresolved edges
+/// being silently dropped by add_edge() (root cause of 9% edge ratio on OversizeConnect).
+pub fn resolve_unresolved_edges(
+    edges: &mut Vec<SymbolEdge>,
+    graph: &CodeGraph,
+) {
+    // Step 1: Build name -> list of symbol IDs for all exported symbols
+    let mut exported_by_name: HashMap<String, Vec<String>> = HashMap::new();
+    for idx in graph.graph.node_indices() {
+        let node = &graph.graph[idx];
+        if node.is_exported {
+            exported_by_name
+                .entry(node.name.clone())
+                .or_default()
+                .push(node.id.clone());
+        }
+    }
+
+    // Step 2: Build import context map: source file -> set of imported file paths.
+    // Used for disambiguation when multiple symbols share the same name.
+    let mut import_context: HashMap<String, HashSet<String>> = HashMap::new();
+    for edge in edges.iter() {
+        if edge.kind == EdgeKind::Import {
+            // Extract source file path from source_id (e.g., "src/app.ts::<import>" -> "src/app.ts")
+            let source_file = if let Some((file_part, _)) = edge.source_id.rsplit_once("::") {
+                file_part.to_string()
+            } else {
+                edge.source_id.clone()
+            };
+            // Extract target file path from target_id (e.g., "src/utils.ts::format" -> "src/utils.ts")
+            if let Some((target_file, _)) = edge.target_id.rsplit_once("::") {
+                import_context
+                    .entry(source_file)
+                    .or_default()
+                    .insert(target_file.to_string());
+            }
+        }
+    }
+
+    // Step 3: Resolve each unresolved:: edge
+    for edge in edges.iter_mut() {
+        if !edge.target_id.starts_with("unresolved::") {
+            continue;
+        }
+
+        let symbol_name = match edge.target_id.strip_prefix("unresolved::") {
+            Some(name) => name.to_string(),
+            None => continue,
+        };
+
+        let candidates = match exported_by_name.get(&symbol_name) {
+            Some(ids) => ids,
+            None => continue, // No match: leave unchanged (will be dropped by add_edge)
+        };
+
+        if candidates.len() == 1 {
+            // Exactly one match: rewrite directly
+            edge.target_id = candidates[0].clone();
+        } else {
+            // Multiple matches: disambiguate using import context
+            let source_file = if let Some((file_part, _)) = edge.source_id.rsplit_once("::") {
+                file_part.to_string()
+            } else {
+                edge.source_id.clone()
+            };
+
+            let imported_files = import_context.get(&source_file);
+
+            // Find candidate whose file_path appears in the source file's import set
+            let mut matched: Option<&String> = None;
+            if let Some(imports) = imported_files {
+                let mut sorted_candidates: Vec<&String> = candidates.iter().collect();
+                sorted_candidates.sort();
+                for candidate_id in &sorted_candidates {
+                    if let Some((candidate_file, _)) = candidate_id.rsplit_once("::") {
+                        if imports.contains(candidate_file) {
+                            matched = Some(candidate_id);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if let Some(id) = matched {
+                edge.target_id = id.clone();
+            } else {
+                // No import disambiguates: pick first sorted alphabetically for determinism
+                let mut sorted: Vec<&String> = candidates.iter().collect();
+                sorted.sort();
+                edge.target_id = sorted[0].clone();
+            }
+        }
+    }
+}
+
 /// Resolve all edges: apply path aliases, resolve barrel chains, remove ReExport edges.
 ///
 /// This is the main entry point for the resolution pass, called between extraction and
@@ -294,20 +396,50 @@ pub fn resolve_edges(
 
 /// Try to resolve a file path with TypeScript extension resolution.
 ///
-/// If the path already has a known extension, return it.
-/// Otherwise try appending .ts, .tsx, /index.ts, /index.tsx and check
-/// if a node exists in the graph with that file_path.
+/// Handles three cases:
+/// 1. JS-to-TS mapping: .js->.ts, .jsx->.tsx, .mjs->.mts, .cjs->.cts
+/// 2. Already has .ts/.tsx extension: return as-is
+/// 3. No extension: try appending .ts, .tsx, /index.ts, /index.tsx
 fn resolve_extension(resolved_path: &str, symbol: &str, graph: &CodeGraph) -> String {
-    // If path already has a known extension, use it
-    if resolved_path.ends_with(".ts")
-        || resolved_path.ends_with(".tsx")
-        || resolved_path.ends_with(".js")
-        || resolved_path.ends_with(".jsx")
-    {
+    // JS-to-TS mapping: try the TypeScript equivalent of JavaScript extensions BEFORE
+    // the early return for known extensions. This handles the common pattern where
+    // TypeScript projects use .js extensions in imports but the actual files are .ts.
+    let js_to_ts_mappings: &[(&str, &str)] = &[
+        (".js", ".ts"),
+        (".jsx", ".tsx"),
+        (".mjs", ".mts"),
+        (".cjs", ".cts"),
+    ];
+
+    for (js_ext, ts_ext) in js_to_ts_mappings {
+        if resolved_path.ends_with(js_ext) {
+            let ts_candidate = format!("{}{}", &resolved_path[..resolved_path.len() - js_ext.len()], ts_ext);
+
+            // Check if the TS version exists in the graph
+            let test_id = format!("{}::{}", ts_candidate, symbol);
+            if graph.get_index(&test_id).is_some() {
+                return ts_candidate;
+            }
+
+            // Also check by file_path
+            for idx in graph.graph.node_indices() {
+                let node = &graph.graph[idx];
+                if node.file_path == ts_candidate {
+                    return ts_candidate;
+                }
+            }
+
+            // No TS version found: return the original JS path
+            return resolved_path.to_string();
+        }
+    }
+
+    // If path already has a known TS extension, use it
+    if resolved_path.ends_with(".ts") || resolved_path.ends_with(".tsx") {
         return resolved_path.to_string();
     }
 
-    // Try extension candidates
+    // Extensionless: try extension candidates
     let candidates = [
         format!("{}.ts", resolved_path),
         format!("{}.tsx", resolved_path),
