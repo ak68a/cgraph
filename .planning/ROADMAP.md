@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Project scaffold, shared data model, tree-sitter setup, language detection, CLI skeleton
 - [ ] **Phase 2: TypeScript Extractor** - Full TS/TSX extraction including imports, calls, type refs, barrel re-exports, and path alias resolution
-- [ ] **Phase 3: Indexer & Analysis Pipeline** - File crawl, symbol resolution, dead code detection, blast radius, circular dependency analysis
+- [x] **Phase 3: Indexer & Analysis Pipeline** - File crawl, symbol resolution, dead code detection, blast radius, circular dependency analysis (completed 2026-05-02)
 - [ ] **Phase 4: HTTP Server & Browser Shell** - Localhost server, static browser client, D3 force graph rendering, scan statistics output
 - [ ] **Phase 5: Graph Interaction** - Node expand/collapse, zoom/pan, search, click-to-focus, blast radius view, dead code overlay, filters, session history
 - [ ] **Phase 6: Watch Mode** - File watcher, incremental re-parse on save, WebSocket push of graph patches to browser
@@ -84,7 +84,7 @@ Plans:
   6. Circular dependency chains between modules are detected and enumerable
   7. Re-export chains through barrel files (e.g., index.ts re-exporting from nested modules) are resolved to the true defining file — the graph contains no intermediate barrel-only edges (PARS-09)
   8. Import paths using tsconfig path aliases (e.g., @/components/Button) are resolved to the actual file path relative to the project root (PARS-10)
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 - [x] 03-01-PLAN.md — Indexer crate scaffold, CodeGraph struct, file crawl + extractor dispatch
@@ -208,7 +208,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | - |
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
-| 3. Indexer & Analysis Pipeline | 4/4 | Verifying | - |
+| 3. Indexer & Analysis Pipeline | 4/4 | Complete    | 2026-05-02 |
 | 4. HTTP Server & Browser Shell | 0/TBD | Not started | - |
 | 5. Graph Interaction | 0/TBD | Not started | - |
 | 6. Watch Mode | 0/TBD | Not started | - |

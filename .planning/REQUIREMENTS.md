@@ -15,17 +15,17 @@
 - [ ] **PARS-06**: Tool extracts function/method call relationships
 - [ ] **PARS-07**: Tool extracts type reference relationships (extends, implements, uses-type)
 - [ ] **PARS-08**: Tool extracts re-export relationships (barrel files)
-- [ ] **PARS-09**: Tool resolves multi-hop barrel re-export chains to find the true source
-- [ ] **PARS-10**: Tool resolves TypeScript path aliases (tsconfig paths, babel moduleNameMapper)
+- [x] **PARS-09**: Tool resolves multi-hop barrel re-export chains to find the true source
+- [x] **PARS-10**: Tool resolves TypeScript path aliases (tsconfig paths, babel moduleNameMapper)
 - [ ] **PARS-11**: Tool auto-detects project language from file extensions
 
 ### Analysis
 
-- [ ] **ANLS-01**: Tool identifies dead code (exported symbols with zero incoming edges)
-- [ ] **ANLS-02**: Dead code detection uses confidence scoring (suspicious vs confirmed dead)
-- [ ] **ANLS-03**: Tool detects circular dependencies between modules
-- [ ] **ANLS-04**: Tool computes transitive dependents for any symbol (blast radius)
-- [ ] **ANLS-05**: Tool computes transitive dependencies for any symbol (what it uses)
+- [x] **ANLS-01**: Tool identifies dead code (exported symbols with zero incoming edges)
+- [x] **ANLS-02**: Dead code detection uses confidence scoring (suspicious vs confirmed dead)
+- [x] **ANLS-03**: Tool detects circular dependencies between modules
+- [x] **ANLS-04**: Tool computes transitive dependents for any symbol (blast radius)
+- [x] **ANLS-05**: Tool computes transitive dependencies for any symbol (what it uses)
 
 ### Visualization
 
@@ -53,7 +53,7 @@
 
 - [ ] **INFR-01**: Tool runs as a CLI command (`cg <path>`)
 - [ ] **INFR-02**: Tool starts a localhost HTTP server and auto-opens the browser
-- [ ] **INFR-03**: Tool displays scan statistics after parsing (files, symbols, edges, time)
+- [x] **INFR-03**: Tool displays scan statistics after parsing (files, symbols, edges, time)
 - [ ] **INFR-04**: Tool supports watch mode that re-parses changed files on save
 - [ ] **INFR-05**: Watch mode pushes incremental graph updates via WebSocket (no full reload)
 - [ ] **INFR-06**: Tool is distributed as a single binary (cargo install, Homebrew, and npm prebuilt binaries)
@@ -109,14 +109,14 @@
 | PARS-06 | Phase 2 | Pending |
 | PARS-07 | Phase 2 | Pending |
 | PARS-08 | Phase 2 | Pending |
-| PARS-09 | Phase 2 (raw edges), Phase 3 (resolution) | Pending |
-| PARS-10 | Phase 2 (raw paths), Phase 3 (resolution) | Pending |
+| PARS-09 | Phase 2 (raw edges), Phase 3 (resolution) | Complete |
+| PARS-10 | Phase 2 (raw paths), Phase 3 (resolution) | Complete |
 | PARS-11 | Phase 1 | Pending |
-| ANLS-01 | Phase 3 | Pending |
-| ANLS-02 | Phase 3 | Pending |
-| ANLS-03 | Phase 3 | Pending |
-| ANLS-04 | Phase 3 | Pending |
-| ANLS-05 | Phase 3 | Pending |
+| ANLS-01 | Phase 3 | Complete |
+| ANLS-02 | Phase 3 | Complete |
+| ANLS-03 | Phase 3 | Complete |
+| ANLS-04 | Phase 3 | Complete |
+| ANLS-05 | Phase 3 | Complete |
 | VIZN-01 | Phase 4 | Pending |
 | VIZN-02 | Phase 4 | Pending |
 | VIZN-03 | Phase 5 | Pending |
@@ -135,7 +135,7 @@
 | INTR-08 | Phase 5 | Pending |
 | INFR-01 | Phase 1 | Pending |
 | INFR-02 | Phase 4 | Pending |
-| INFR-03 | Phase 3 | Pending |
+| INFR-03 | Phase 3 | Complete |
 | INFR-04 | Phase 6 | Pending |
 | INFR-05 | Phase 6 | Pending |
 | INFR-06 | Phase 10 | Pending |
