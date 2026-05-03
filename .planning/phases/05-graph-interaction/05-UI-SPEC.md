@@ -54,6 +54,12 @@ Exceptions: 6px used for panel-body top padding and search-wrap bottom margin (i
 
 Source: Inherited from Phase 4 client/index.html. Two weights only: 400 and 500.
 
+**Usage mapping (all interaction specs reference ONLY these 4 sizes):**
+- 11px Label: symbol labels on expanded nodes, dead code badges, quick-filter pill text
+- 12px Section Header: panel section titles, breadcrumb node names
+- 13px Body: command palette input, search bar input, tooltip body, result list items
+- 18px Heading: panel heading, empty state heading
+
 ---
 
 ## Color
@@ -124,7 +130,7 @@ Accent reserved for: toggle active state, focus input border, hovered/focused no
 | Default mode | Orbital ring |
 | Animation duration | 300ms ease-out for expand, 200ms ease-in for collapse |
 | Symbol node size | 6px radius (smaller than file nodes which are 8-24px) |
-| Symbol label | Symbol name, 10px, positioned per expand mode |
+| Symbol label | Symbol name, 11px Label size, positioned per expand mode |
 
 ### Search & Focus (D-73, D-74)
 
@@ -145,7 +151,7 @@ Accent reserved for: toggle active state, focus input border, hovered/focused no
 | Placement | Centered overlay, 480px wide, 48px from top |
 | Background | #2a2a2a with border #3a3a3a, border-radius 12px |
 | Backdrop | rgba(0,0,0,0.5) covering full viewport |
-| Input | 16px font size, 44px height, no border, transparent background |
+| Input | 13px Body size, 44px height, no border, transparent background |
 | Results | Max 8 visible, 36px row height, hover #333 background |
 | Selected item | #7f6df2 left border (3px) + #333 background |
 | Dismiss | Escape key or click backdrop |
@@ -188,7 +194,7 @@ Accent reserved for: toggle active state, focus input border, hovered/focused no
 |----------|-------|
 | Confirmed dead | #f87171 solid 3px border on node circle + small "x" badge (8x8px, top-right) |
 | Suspicious dead | #f87171 dashed 2px border at 50% opacity + small "?" badge (8x8px, top-right) |
-| Badge style | White text on colored background, 8px circle, font-size 7px |
+| Badge style | White text on colored background, 8px circle, 11px Label size |
 | Non-dead-code nodes | Unchanged (no dimming) |
 | Legend update | Show dead code count in panel when active |
 
@@ -223,7 +229,7 @@ Accent reserved for: toggle active state, focus input border, hovered/focused no
 | Pills | "Functions" / "Classes" / "Imports" / "Calls" |
 | Active style | #7f6df2 background, #fff text, border-radius 12px |
 | Inactive style | #333 background, #999 text, border 1px solid #444, border-radius 12px |
-| Size | Padding 4px 10px, font-size 11px |
+| Size | Padding 4px 10px, 11px Label size |
 | Behavior | Click toggles filter on/off; syncs with panel checkboxes |
 
 ### Zoom & Pan (VIZN-04)
