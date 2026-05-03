@@ -281,7 +281,7 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index_handler))
         .route("/api/graph", get(graph_handler))
-        .route("/*path", get(static_handler_route))
+        .route("/{*path}", get(static_handler_route))
         .with_state(state)
 }
 
