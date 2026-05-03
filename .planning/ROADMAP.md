@@ -145,7 +145,7 @@ Plans:
 - [x] 05-02-PLAN.md — HTML shell extension: header bar, panel sections, command palette, fit-to-screen button
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 05-03-PLAN.md — Core JS: node expand/collapse (3 modes), click-to-focus, fit-to-screen
+- [x] 05-03-PLAN.md — Core JS: node expand/collapse (3 modes), click-to-focus, fit-to-screen
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 05-04-PLAN.md — Search (header + command palette) and navigation history (back/forward + breadcrumb)
