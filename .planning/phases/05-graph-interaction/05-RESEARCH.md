@@ -520,7 +520,7 @@ let edge_type = match kind {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **AppState ownership of CodeGraph vs pre-computed DeadCodeResult**
    - What we know: CLI runs `dead_code()` in `main.rs` once at startup; result is not currently stored anywhere persistent.
