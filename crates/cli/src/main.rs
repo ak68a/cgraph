@@ -8,7 +8,7 @@ use clap::Parser;
 use cgraph_indexer::{Indexer, dead_code, detect_cycles, DeadCodeResult, DeadCodeEntry, Confidence, CycleResult};
 use cgraph_ts_extractor::TsExtractor;
 use cgraph_core::Extractor;
-use cgraph_server::{ScanStats, AppState, file_level_projection, find_available_port};
+use cgraph_server::{ScanStats, AppState, enriched_projection, find_available_port};
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Code graph visualization — cgraph")]
@@ -110,8 +110,8 @@ async fn main() -> Result<()> {
         elapsed_ms: elapsed.as_millis() as u64,
     };
 
-    // Pre-compute file-level projection
-    let file_graph = file_level_projection(&code_graph, stats, project_name);
+    // Pre-compute enriched projection (file nodes + symbol nodes + typed edges + dead code flags)
+    let file_graph = enriched_projection(&code_graph, &dead_result, stats, project_name);
     let state = AppState {
         file_graph: Arc::new(file_graph),
     };
