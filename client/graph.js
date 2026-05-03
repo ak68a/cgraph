@@ -247,7 +247,7 @@ async function loadAndRender() {
 
     var simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(50).strength(0.9))
-        .force('charge', d3.forceManyBody().strength(-60))
+        .force('charge', d3.forceManyBody().strength(function(d) { return d._isSymbol ? -20 : -60; }))
         .force('center', d3.forceCenter(width / 2, height / 2).strength(0.12))
         .force('collide', d3.forceCollide().radius(function(d) { return d.radius + 8; }))
         .force('x', d3.forceX(width / 2).strength(0.06))
@@ -496,8 +496,10 @@ async function loadAndRender() {
     function rebuildSimulation() {
         simulation.nodes(nodes);
         simulation.force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(function(d) {
-            return d._isParentEdge ? 25 : 50;
-        }).strength(0.9));
+            return d._isParentEdge ? 30 : 50;
+        }).strength(function(d) {
+            return d._isParentEdge ? 2 : 0.9;
+        }));
 
         // Rejoin node circles with stable keys
         node = nodeGroup.selectAll('circle')
