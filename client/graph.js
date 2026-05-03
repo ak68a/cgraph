@@ -44,7 +44,7 @@ async function loadAndRender() {
     defs.append('marker')
         .attr('id', 'arrow')
         .attr('viewBox', '-0 -5 10 10')
-        .attr('refX', 13).attr('refY', 0)
+        .attr('refX', 10).attr('refY', 0)
         .attr('orient', 'auto')
         .attr('markerWidth', 6).attr('markerHeight', 4)
       .append('path')
@@ -54,7 +54,7 @@ async function loadAndRender() {
     defs.append('marker')
         .attr('id', 'arrow-active')
         .attr('viewBox', '-0 -5 10 10')
-        .attr('refX', 13).attr('refY', 0)
+        .attr('refX', 10).attr('refY', 0)
         .attr('orient', 'auto')
         .attr('markerWidth', 6).attr('markerHeight', 4)
       .append('path')
@@ -104,8 +104,8 @@ async function loadAndRender() {
         var dist = Math.sqrt(dx * dx + dy * dy);
         if (dist === 0) return { x: target.x, y: target.y };
         return {
-            x: target.x - (dx / dist) * (targetRadius + 8),
-            y: target.y - (dy / dist) * (targetRadius + 8)
+            x: target.x - (dx / dist) * (targetRadius + 4),
+            y: target.y - (dy / dist) * (targetRadius + 4)
         };
     }
 
@@ -125,8 +125,7 @@ async function loadAndRender() {
         .join('circle')
         .attr('r', function(d) { return d.radius; })
         .attr('fill', '#555')
-        .attr('stroke', '#333')
-        .attr('stroke-width', 1)
+        .attr('stroke', 'none')
         .style('cursor', 'grab');
 
     // Labels
