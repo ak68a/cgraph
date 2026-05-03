@@ -148,7 +148,7 @@ Plans:
 - [x] 05-03-PLAN.md — Core JS: node expand/collapse (3 modes), click-to-focus, fit-to-screen
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 05-04-PLAN.md — Search (header + command palette) and navigation history (back/forward + breadcrumb)
+- [x] 05-04-PLAN.md — Search (header + command palette) and navigation history (back/forward + breadcrumb)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 05-05-PLAN.md — Overlays (dead code, blast radius) and filter system (directory, symbol type, edge type, pills)
