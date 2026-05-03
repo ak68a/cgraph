@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Foundation** - Project scaffold, shared data model, tree-sitter setup, language detection, CLI skeleton
 - [ ] **Phase 2: TypeScript Extractor** - Full TS/TSX extraction including imports, calls, type refs, barrel re-exports, and path alias resolution
 - [x] **Phase 3: Indexer & Analysis Pipeline** - File crawl, symbol resolution, dead code detection, blast radius, circular dependency analysis
-- [ ] **Phase 4: HTTP Server & Browser Shell** - Localhost server, static browser client, D3 force graph rendering, scan statistics output
+- [x] **Phase 4: HTTP Server & Browser Shell** - Localhost server, static browser client, D3 force graph rendering, scan statistics output
 - [ ] **Phase 5: Graph Interaction** - Node expand/collapse, zoom/pan, search, click-to-focus, blast radius view, dead code overlay, filters, session history
 - [ ] **Phase 6: Watch Mode** - File watcher, incremental re-parse on save, WebSocket push of graph patches to browser
 - [ ] **Phase 7: Swift Extractor** - tree-sitter-swift grammar, extraction of Swift symbols and relationships
@@ -122,7 +122,7 @@ Plans:
 - [x] 04-03-PLAN.md — CLI wiring: async main, server startup, browser auto-open, --no-open flag
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 04-04-PLAN.md — Integration checks + visual verification checkpoint
+- [x] 04-04-PLAN.md — Integration checks + visual verification checkpoint
 
 ### Phase 5: Graph Interaction
 **Goal**: Users can fully navigate and interrogate the graph — expanding file nodes to see exports, zooming and panning, searching by name, clicking to focus on a node's neighborhood, activating blast radius and dead code overlays, filtering by file/type/edge, and moving back and forward through their exploration history.
@@ -223,7 +223,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 | 1. Foundation | 3/3 | Complete | - |
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
 | 3. Indexer & Analysis Pipeline | 6/6 | Complete | 2026-05-02 |
-| 4. HTTP Server & Browser Shell | 3/4 | In Progress | - |
+| 4. HTTP Server & Browser Shell | 4/4 | Complete | 2026-05-03 |
 | 5. Graph Interaction | 0/TBD | Not started | - |
 | 6. Watch Mode | 0/TBD | Not started | - |
 | 7. Swift Extractor | 0/TBD | Not started | - |
