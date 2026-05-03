@@ -78,4 +78,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-02 after Phase 03 completion — Indexer & analysis pipeline working end-to-end: file crawl, symbol resolution, dead code detection, blast radius, circular dependency analysis across 12 real-world repos*
+*Last updated: 2026-05-02 after Phase 03 gap closure — Edge resolution quality fixed (OversizeConnect: 106→880 edges). tsconfig extends chains, baseUrl, multi-target paths all working. Ready for Phase 4 (HTTP server + browser shell).*
