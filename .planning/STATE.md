@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-02)
 
 **Core value:** Instantly see what's connected to what — dead code, blast radius, dependency depth — without manual grep work.
-**Current focus:** Phase 03 — indexer-analysis-pipeline (gap closure complete)
+**Current focus:** Phase 04 — HTTP Server & Browser Shell
 
 ## Current Position
 
-Phase: 3 (gap closure complete)
-Plan: 06/06
-Status: Phase complete — ready for verification
-Last activity: 2026-05-02 -- Phase 03 gap closure executed (plans 05, 06)
+Phase: 4
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-05-02 -- Phase 03 complete (verified, UAT passed)
 
 Progress: [██████████] 100%
 

@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Project scaffold, shared data model, tree-sitter setup, language detection, CLI skeleton
 - [ ] **Phase 2: TypeScript Extractor** - Full TS/TSX extraction including imports, calls, type refs, barrel re-exports, and path alias resolution
-- [ ] **Phase 3: Indexer & Analysis Pipeline** - File crawl, symbol resolution, dead code detection, blast radius, circular dependency analysis (gap closure in progress)
+- [x] **Phase 3: Indexer & Analysis Pipeline** - File crawl, symbol resolution, dead code detection, blast radius, circular dependency analysis
 - [ ] **Phase 4: HTTP Server & Browser Shell** - Localhost server, static browser client, D3 force graph rendering, scan statistics output
 - [ ] **Phase 5: Graph Interaction** - Node expand/collapse, zoom/pan, search, click-to-focus, blast radius view, dead code overlay, filters, session history
 - [ ] **Phase 6: Watch Mode** - File watcher, incremental re-parse on save, WebSocket push of graph patches to browser
