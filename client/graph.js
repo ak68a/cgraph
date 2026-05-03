@@ -2005,14 +2005,13 @@ async function loadAndRender() {
 
     function countForDef(def) {
         if (def.type === 'symbol') {
-            return nodes.filter(function(n) {
-                if (!n._isSymbol) return false;
-                var k = n.kind === 'interface' ? 'type' : n.kind;
+            return (data.symbols || []).filter(function(s) {
+                var k = s.kind === 'interface' ? 'type' : s.kind;
                 return k === def.stateKey;
             }).length;
         } else {
-            return edges.filter(function(e) {
-                return !e._isParentEdge && (e.edge_type || 'import') === def.stateKey;
+            return allEdgeData.filter(function(e) {
+                return (e.edge_type || 'import') === def.stateKey;
             }).length;
         }
     }
