@@ -228,6 +228,11 @@ async function loadAndRender() {
         symbolAdjacency.get(tgt).add(src);
     });
 
+    // Preserve original file-level data for level switching
+    var fileNodes = nodes.map(function(d) { return Object.assign({}, d); });
+    var fileEdges = edges.map(function(d) { return Object.assign({}, d); });
+    var viewLevel = 'files'; // 'files' or 'symbols'
+
     var adjacency = new Map();
     nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
 
@@ -560,6 +565,116 @@ async function loadAndRender() {
         simulation.alpha(0.3).restart();
     }
 
+    // === Level Toggle (Files / Symbols) ===
+
+    function switchToFileLevel() {
+        if (viewLevel === 'files') return;
+        viewLevel = 'files';
+
+        // Clear focus state
+        focusActive = false;
+        focusedNodeId = null;
+        expandedFiles.clear();
+
+        // Restore file-level data
+        nodes.length = 0;
+        fileNodes.forEach(function(d) { nodes.push(Object.assign({}, d)); });
+        edges.length = 0;
+        fileEdges.forEach(function(d) { edges.push(Object.assign({}, d)); });
+
+        // Rebuild adjacency
+        adjacency.clear();
+        nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
+        edges.forEach(function(e) {
+            var si = typeof e.source === 'object' ? e.source.id : e.source;
+            var ti = typeof e.target === 'object' ? e.target.id : e.target;
+            if (adjacency.has(si)) adjacency.get(si).add(ti);
+            if (adjacency.has(ti)) adjacency.get(ti).add(si);
+        });
+
+        // Pre-compute layout before rendering
+        simulation.stop();
+        simulation.nodes(nodes);
+        simulation.force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(50).strength(0.9));
+        simulation.force('charge').strength(function(d) { return -60; });
+        simulation.alpha(1);
+        simulation.tick(300);
+        simulation.stop();
+
+        rebuildSimulation();
+        applyFilters();
+        updateStateIndicator();
+
+        document.getElementById('level-files').classList.add('active');
+        document.getElementById('level-symbols').classList.remove('active');
+    }
+
+    function switchToSymbolLevel() {
+        if (viewLevel === 'symbols') return;
+        viewLevel = 'symbols';
+
+        // Clear focus and expand state
+        focusActive = false;
+        focusedNodeId = null;
+        expandedFiles.clear();
+
+        // Build symbol nodes from all symbols
+        var allSymbols = data.symbols || [];
+        nodes.length = 0;
+        allSymbols.forEach(function(s) {
+            nodes.push({
+                id: s.id,
+                name: s.name,
+                kind: s.kind,
+                file_path: s.file_path,
+                radius: 8,
+                _isSymbol: true,
+                is_dead_code: s.is_dead_code,
+                dead_code_confidence: s.dead_code_confidence
+            });
+        });
+
+        // Build symbol-level edges (only between symbols that exist as nodes)
+        var nodeIds = new Set(nodes.map(function(n) { return n.id; }));
+        edges.length = 0;
+        symbolEdges.forEach(function(se) {
+            var src = typeof se.source === 'object' ? se.source.id : se.source;
+            var tgt = typeof se.target === 'object' ? se.target.id : se.target;
+            if (nodeIds.has(src) && nodeIds.has(tgt) && src !== tgt) {
+                edges.push(Object.assign({}, se));
+            }
+        });
+
+        // Rebuild adjacency
+        adjacency.clear();
+        nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
+        edges.forEach(function(e) {
+            var si = typeof e.source === 'object' ? e.source.id : e.source;
+            var ti = typeof e.target === 'object' ? e.target.id : e.target;
+            if (adjacency.has(si)) adjacency.get(si).add(ti);
+            if (adjacency.has(ti)) adjacency.get(ti).add(si);
+        });
+
+        // Pre-compute layout
+        simulation.stop();
+        simulation.nodes(nodes);
+        simulation.force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(40).strength(0.8));
+        simulation.force('charge').strength(function(d) { return -30; });
+        simulation.alpha(1);
+        simulation.tick(300);
+        simulation.stop();
+
+        rebuildSimulation();
+        applyFilters();
+        updateStateIndicator();
+
+        document.getElementById('level-files').classList.remove('active');
+        document.getElementById('level-symbols').classList.add('active');
+    }
+
+    document.getElementById('level-files').addEventListener('click', switchToFileLevel);
+    document.getElementById('level-symbols').addEventListener('click', switchToSymbolLevel);
+
     // Expand mode change handler
     document.getElementById('expand-mode').addEventListener('change', function() {
         expandMode = this.value;
@@ -660,7 +775,7 @@ async function loadAndRender() {
 
             // If file node: toggle expand/collapse
             // Only collapse if this file is already the focused node (deliberate toggle)
-            if (!d._isSymbol) {
+            if (!d._isSymbol && viewLevel === 'files') {
                 if (expandedFiles.has(d.id)) {
                     if (focusedNodeId === d.id) {
                         collapseFileNode(d.id);

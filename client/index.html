@@ -170,6 +170,16 @@
     #btn-back:not(:disabled), #btn-forward:not(:disabled) { opacity: 1; cursor: pointer; background: #3a3a3a; border-color: #555; color: #ddd; }
     #btn-back:not(:disabled):hover, #btn-forward:not(:disabled):hover { background: #4a4a4a; color: #fff; border-color: #7f6df2; }
 
+    #level-toggle {
+      display: flex; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 8px; overflow: hidden;
+    }
+    #level-toggle button {
+      padding: 4px 14px; font-size: 12px; font-weight: 500; border: none; background: none;
+      color: #888; cursor: pointer; transition: all 0.15s ease; white-space: nowrap;
+    }
+    #level-toggle button:hover { color: #ccc; background: #333; }
+    #level-toggle button.active { color: #fff; background: #7f6df2; }
+
     .palette-item { padding:8px 16px; cursor:pointer; font-size:13px; color:#ddd; border-left:3px solid transparent; }
     .palette-item:hover, .palette-item.selected { background:#333; border-left-color:#7f6df2; }
     .palette-item .palette-kind { font-size:11px; color:#666; margin-left:8px; }
@@ -257,7 +267,11 @@
       <span id="project-name"></span>
       <input type="text" id="header-search" placeholder="Search symbols..." style="width:200px;padding:4px 8px;background:#333;border:1px solid #444;border-radius:6px;color:#ddd;font-size:13px;outline:none;" />
     </div>
-    <div id="header-center" style="display:flex;align-items:center;gap:8px;">
+    <div id="header-center" style="display:flex;align-items:center;gap:12px;">
+      <div id="level-toggle">
+        <button id="level-files" class="active" title="File-level overview">Files</button>
+        <button id="level-symbols" title="Symbol-level graph">Symbols</button>
+      </div>
       <div id="quick-filters" style="display:flex;gap:4px;"></div>
     </div>
     <div id="header-right" style="display:flex;align-items:center;gap:8px;">
