@@ -52,7 +52,7 @@ async function loadAndRender() {
     var svg = d3.select('#graph').append('svg').attr('width', width).attr('height', height);
     var defs = svg.append('defs');
 
-    var edgeColors = { import: '#4a9eff', call: '#f97583', type_ref: '#b392f0', re_export: '#4a9eff', parent_child: '#444' };
+    var edgeColors = { import: '#4a9eff', call: '#ff6e40', type_ref: '#b392f0', re_export: '#4a9eff', parent_child: '#444' };
     function edgeColor(e) { return edgeColors[e.edge_type] || '#444'; }
 
     function addArrowMarker(id, color) {
