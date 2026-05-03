@@ -137,8 +137,24 @@ Plans:
   6. Activating dead code overlay highlights all exported symbols with zero incoming edges using the confidence coloring from Phase 3
   7. The user can filter visible nodes/edges by file or directory, by symbol type, and by edge type independently
   8. Clicking through multiple focused nodes builds a back/forward history navigable with browser-style controls
-**Plans**: TBD
+**Plans:** 6 plans
 **UI hint**: yes
+Plans:
+**Wave 1**
+- [ ] 05-01-PLAN.md — Rust API extension: EnrichedGraphResponse with symbol nodes, typed edges, dead code flags
+- [ ] 05-02-PLAN.md — HTML shell extension: header bar, panel sections, command palette, fit-to-screen button
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 05-03-PLAN.md — Core JS: node expand/collapse (3 modes), click-to-focus, fit-to-screen
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 05-04-PLAN.md — Search (header + command palette) and navigation history (back/forward + breadcrumb)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 05-05-PLAN.md — Overlays (dead code, blast radius) and filter system (directory, symbol type, edge type, pills)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 05-06-PLAN.md — Visual verification checkpoint
 
 ### Phase 6: Watch Mode
 **Goal**: Users running `cg <path> --watch` (or always-on dashboard mode) see the graph update automatically when they save a file — without a full page reload, using incremental WebSocket patches that only re-render the changed portions of the graph.
@@ -224,7 +240,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
 | 3. Indexer & Analysis Pipeline | 6/6 | Complete | 2026-05-02 |
 | 4. HTTP Server & Browser Shell | 4/4 | Complete | 2026-05-03 |
-| 5. Graph Interaction | 0/TBD | Not started | - |
+| 5. Graph Interaction | 0/6 | Planning | - |
 | 6. Watch Mode | 0/TBD | Not started | - |
 | 7. Swift Extractor | 0/TBD | Not started | - |
 | 8. Go Extractor | 0/TBD | Not started | - |
