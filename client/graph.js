@@ -270,9 +270,9 @@ async function loadAndRender() {
         simulation.alpha(0.3).restart();
     });
 
-    // Display: link thickness
-    document.getElementById('slider-link-thickness').addEventListener('input', function() {
-        link.attr('stroke-width', parseFloat(this.value));
+    // Display: label size
+    document.getElementById('slider-label-size').addEventListener('input', function() {
+        labels.attr('font-size', this.value + 'px');
     });
 
     // Forces: center
