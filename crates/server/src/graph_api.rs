@@ -294,6 +294,7 @@ pub fn create_router(state: AppState) -> Router {
 mod tests {
     use super::*;
     use cgraph_core::{EdgeKind, Language, SymbolKind, SymbolNode};
+    use cgraph_indexer::{DeadCodeResult, DeadCodeEntry, Confidence};
 
     fn make_symbol(
         id: &str,
@@ -464,5 +465,57 @@ mod tests {
             0,
             "self-edges (same file) should be excluded"
         );
+    }
+
+    #[test]
+    fn test_enriched_response_includes_symbols() {
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_symbol("src/a.ts::foo", "src/a.ts", SymbolKind::Function, true));
+        graph.add_symbol(make_symbol("src/a.ts::Bar", "src/a.ts", SymbolKind::Class, true));
+        let dead_result = DeadCodeResult::default();
+        let resp = enriched_projection(&graph, &dead_result, dummy_stats(), "test".to_string());
+        assert_eq!(resp.symbols.len(), 2);
+        assert!(resp.symbols.iter().any(|s| s.name == "foo" && s.kind == "function"));
+        assert!(resp.symbols.iter().any(|s| s.name == "Bar" && s.kind == "class"));
+    }
+
+    #[test]
+    fn test_enriched_response_dead_code_flags() {
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_symbol("src/a.ts::foo", "src/a.ts", SymbolKind::Function, true));
+        graph.add_symbol(make_symbol("src/a.ts::bar", "src/a.ts", SymbolKind::Function, true));
+        let dead_result = DeadCodeResult {
+            confirmed: vec![DeadCodeEntry {
+                symbol_id: "src/a.ts::foo".to_string(),
+                file_path: "src/a.ts".to_string(),
+                symbol_name: "foo".to_string(),
+                kind: SymbolKind::Function,
+                line_start: 1,
+                line_end: 10,
+                confidence: Confidence::Confirmed,
+            }],
+            suspicious: vec![],
+        };
+        let resp = enriched_projection(&graph, &dead_result, dummy_stats(), "test".to_string());
+        let foo = resp.symbols.iter().find(|s| s.name == "foo").unwrap();
+        assert!(foo.is_dead_code);
+        assert_eq!(foo.dead_code_confidence, Some("confirmed".to_string()));
+        let bar = resp.symbols.iter().find(|s| s.name == "bar").unwrap();
+        assert!(!bar.is_dead_code);
+        assert_eq!(bar.dead_code_confidence, None);
+    }
+
+    #[test]
+    fn test_enriched_response_typed_edges() {
+        let mut graph = CodeGraph::new();
+        graph.add_symbol(make_symbol("src/a.ts::foo", "src/a.ts", SymbolKind::Function, true));
+        graph.add_symbol(make_symbol("src/b.ts::bar", "src/b.ts", SymbolKind::Function, true));
+        graph.add_edge("src/a.ts::foo", "src/b.ts::bar", EdgeKind::Call);
+        let dead_result = DeadCodeResult::default();
+        let resp = enriched_projection(&graph, &dead_result, dummy_stats(), "test".to_string());
+        // Symbol-level edge
+        assert!(resp.edges.iter().any(|e| e.source == "src/a.ts::foo" && e.target == "src/b.ts::bar" && e.edge_type == "call"));
+        // File-level edge also present
+        assert!(resp.edges.iter().any(|e| e.source == "src/a.ts" && e.target == "src/b.ts"));
     }
 }
