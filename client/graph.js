@@ -79,6 +79,8 @@ async function loadAndRender() {
 
     function pushHistory(targetNode) {
         if (navigating) return;
+        // Skip if already at the same node
+        if (historyIndex >= 0 && historyStack[historyIndex].id === targetNode.id) return;
         // Truncate forward history on new navigation
         historyStack = historyStack.slice(0, historyIndex + 1);
         historyStack.push({
