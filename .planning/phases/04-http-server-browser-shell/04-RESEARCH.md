@@ -645,17 +645,17 @@ fn open_browser(url: &str, no_open: bool) {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **D3 bundle delivery: CDN vs embedded**
    - What we know: D-61 requires a single binary with zero runtime deps. A CDN link violates this for offline/VPN environments.
    - What's unclear: Should `d3.v7.min.js` be committed to the repo or downloaded as part of `cargo build` (build.rs script)?
-   - Recommendation: Commit `client/d3.v7.min.js` (~550KB minified) to the repo at project creation time. No build.rs complexity needed. This is standard practice for single-binary tools.
+   - RESOLVED: Commit `client/d3.v7.min.js` (~550KB minified) to the repo at project creation time. No build.rs complexity needed. This is standard practice for single-binary tools.
 
 2. **`--no-open` flag placement: CLI arg or server arg?**
    - What we know: D-62 specifies `--no-open`. The current CLI only has `--path`, `--verbose`, `--dead-code`, `--cycles`.
    - What's unclear: Should `--no-open` be added to the existing `Cli` struct in `crates/cli`?
-   - Recommendation: Yes — add `--no-open` as a clap arg on the existing `Cli` struct. It belongs in the CLI orchestration layer, not the server.
+   - RESOLVED: Yes — add `--no-open` as a clap arg on the existing `Cli` struct. It belongs in the CLI orchestration layer, not the server.
 
 ---
 
