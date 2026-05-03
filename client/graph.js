@@ -86,14 +86,14 @@ async function loadAndRender() {
         if (adjacency.has(tgtId)) adjacency.get(tgtId).add(srcId);
     });
 
-    // Obsidian-style force layout: stronger center pull creates circular cluster at zoom-out
+    // Obsidian-style force layout: high link force + moderate center/repel = dense circular cluster
     var simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(60).strength(0.3))
-        .force('charge', d3.forceManyBody().strength(-80))
-        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.15))
-        .force('collide', d3.forceCollide().radius(function(d) { return d.radius + 12; }))
-        .force('x', d3.forceX(width / 2).strength(0.03))
-        .force('y', d3.forceY(height / 2).strength(0.03))
+        .force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(50).strength(0.9))
+        .force('charge', d3.forceManyBody().strength(-60))
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.12))
+        .force('collide', d3.forceCollide().radius(function(d) { return d.radius + 8; }))
+        .force('x', d3.forceX(width / 2).strength(0.06))
+        .force('y', d3.forceY(height / 2).strength(0.06))
         .stop();
 
     simulation.tick(300);
