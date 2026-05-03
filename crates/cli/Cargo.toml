@@ -7,8 +7,11 @@ edition.workspace = true
 cgraph-core = { path = "../core" }
 cgraph-indexer = { path = "../indexer" }
 cgraph-ts-extractor = { path = "../ts-extractor" }
+cgraph-server = { path = "../server" }
 clap = { version = "4.6.1", features = ["derive", "cargo"] }
 anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }
+webbrowser = "1"
 
 [dev-dependencies]
 assert_cmd = "2.0"
