@@ -8,7 +8,6 @@ function initPanel() {
     var panel = document.getElementById('panel');
     toggle.addEventListener('click', function() {
         panel.classList.toggle('collapsed');
-        toggle.classList.toggle('open');
     });
     document.querySelectorAll('.section-header').forEach(function(hdr) {
         hdr.addEventListener('click', function(e) {
@@ -53,15 +52,26 @@ async function loadAndRender() {
     var svg = d3.select('#graph').append('svg').attr('width', width).attr('height', height);
     var defs = svg.append('defs');
 
-    defs.append('marker').attr('id', 'arrow')
-        .attr('viewBox', '-0 -5 10 10').attr('refX', 0).attr('refY', 0)
-        .attr('orient', 'auto').attr('markerWidth', 6).attr('markerHeight', 4)
-      .append('path').attr('d', 'M 0,-5 L 10,0 L 0,5').attr('fill', '#444');
+    var edgeColors = { import: '#4a9eff', call: '#f97583', type_ref: '#50c878', re_export: '#4a9eff', parent_child: '#444' };
+    function edgeColor(e) { return edgeColors[e.edge_type] || '#444'; }
 
-    defs.append('marker').attr('id', 'arrow-active')
-        .attr('viewBox', '-0 -5 10 10').attr('refX', 0).attr('refY', 0)
-        .attr('orient', 'auto').attr('markerWidth', 6).attr('markerHeight', 4)
-      .append('path').attr('d', 'M 0,-5 L 10,0 L 0,5').attr('fill', '#a882ff');
+    function addArrowMarker(id, color) {
+        defs.append('marker').attr('id', id)
+            .attr('viewBox', '-0 -5 10 10').attr('refX', 0).attr('refY', 0)
+            .attr('orient', 'auto').attr('markerWidth', 6).attr('markerHeight', 4)
+          .append('path').attr('d', 'M 0,-5 L 10,0 L 0,5').attr('fill', color);
+    }
+    addArrowMarker('arrow', '#444');
+    addArrowMarker('arrow-import', edgeColors.import);
+    addArrowMarker('arrow-call', edgeColors.call);
+    addArrowMarker('arrow-type_ref', edgeColors.type_ref);
+    addArrowMarker('arrow-active', '#a882ff');
+
+    function edgeMarker(e) {
+        if (e._isParentEdge) return 'none';
+        var t = e.edge_type || 'import';
+        return 'url(#arrow-' + t + ')';
+    }
 
     var g = svg.append('g');
     var currentZoom = 1;
@@ -69,6 +79,48 @@ async function loadAndRender() {
     // Focus state (declared before zoomBehavior since zoom callback references focusActive)
     var focusActive = false;
     var focusedNodeId = null;
+
+    // === State Indicator ===
+
+    function updateStateIndicator() {
+        var el = document.getElementById('state-indicator');
+        var modeEl = document.getElementById('state-mode');
+        var targetEl = document.getElementById('state-target');
+        var hintEl = document.getElementById('state-hint');
+        var iconEl = document.getElementById('state-icon');
+
+        if (typeof blastRadiusActive !== 'undefined' && blastRadiusActive && blastRadiusSourceId) {
+            var bNode = nodes.find(function(n) { return n.id === blastRadiusSourceId; });
+            var bName = bNode ? (bNode.filename || bNode.name || bNode.id.split('/').pop()) : '';
+            iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8a838" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>';
+            modeEl.textContent = 'Blast radius';
+            modeEl.style.color = '#e8a838';
+            targetEl.textContent = bName;
+            hintEl.textContent = 'Esc to exit';
+            el.style.display = 'flex';
+        } else if (focusActive && focusedNodeId) {
+            var fNode = nodes.find(function(n) { return n.id === focusedNodeId; });
+            var fName = fNode ? (fNode.filename || fNode.name || fNode.id.split('/').pop()) : '';
+            var isExpanded = fNode && !fNode._isSymbol && expandedFiles.has(fNode.id);
+            iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7f6df2" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>';
+            modeEl.textContent = isExpanded ? 'Focus · Expanded' : 'Focus';
+            modeEl.style.color = '#7f6df2';
+            targetEl.textContent = fName;
+            hintEl.textContent = 'Esc to exit';
+            el.style.display = 'flex';
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    document.getElementById('state-exit').addEventListener('click', function() {
+        if (typeof blastRadiusActive !== 'undefined' && blastRadiusActive && blastRadiusSourceId) {
+            clearBlastRadius();
+        } else if (focusActive) {
+            clearFocus();
+        }
+        updateStateIndicator();
+    });
 
     // === Navigation History (INTR-08, D-75) ===
 
@@ -126,50 +178,6 @@ async function loadAndRender() {
 
         btnBack.disabled = historyIndex <= 0;
         btnForward.disabled = historyIndex >= historyStack.length - 1;
-
-        updateBreadcrumb();
-    }
-
-    function updateBreadcrumb() {
-        var bc = document.getElementById('breadcrumb');
-        if (historyStack.length === 0) {
-            bc.style.display = 'none';
-            return;
-        }
-        bc.style.display = 'flex';
-        bc.innerHTML = ''; // Safe: we rebuild with textContent below
-
-        historyStack.forEach(function(entry, idx) {
-            if (idx > 0) {
-                var sep = document.createElement('span');
-                sep.textContent = '>';
-                sep.style.color = '#666';
-                sep.style.margin = '0 4px';
-                bc.appendChild(sep);
-            }
-
-            var crumb = document.createElement('span');
-            crumb.textContent = entry.name;
-            crumb.style.cursor = 'pointer';
-            crumb.style.color = idx === historyIndex ? '#7f6df2' : '#999';
-            crumb.style.fontWeight = idx === historyIndex ? '500' : '400';
-
-            crumb.addEventListener('click', (function(i) {
-                return function() {
-                    navigating = true;
-                    historyIndex = i;
-                    var target = nodes.find(function(n) { return n.id === historyStack[i].id; });
-                    if (target) {
-                        flyToNode(target);
-                        activateFocus(target);
-                    }
-                    navigating = false;
-                    updateNavUI();
-                };
-            })(idx));
-
-            bc.appendChild(crumb);
-        });
     }
 
     // Wire back/forward buttons
@@ -268,7 +276,7 @@ async function loadAndRender() {
 
     var linkGroup = g.append('g').attr('class', 'edges');
     var link = linkGroup.selectAll('line').data(edges).join('line')
-        .attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
+        .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
 
     var nodeGroup = g.append('g').attr('class', 'nodes');
     var node = nodeGroup.selectAll('circle')
@@ -279,10 +287,23 @@ async function loadAndRender() {
         .attr('stroke', 'none').style('cursor', 'grab');
 
     var labelGroup = g.append('g').attr('class', 'labels');
-    var labels = labelGroup.selectAll('text').data(nodes).join('text')
-        .attr('text-anchor', 'middle').attr('fill', '#999')
-        .attr('font-size', '11px').attr('pointer-events', 'none')
-        .text(function(d) { return d.filename; });
+    function applyLabelStyle(sel) {
+        sel.attr('text-anchor', 'middle').attr('pointer-events', 'none')
+            .each(function(d) {
+                var el = d3.select(this);
+                el.selectAll('*').remove();
+                if (d._isSymbol) {
+                    el.attr('fill', '#ccc').attr('font-size', '9px').attr('font-weight', '400');
+                    el.append('tspan').text('● ').attr('fill', NODE_COLORS[d.kind] || '#555').attr('font-size', '7px');
+                    el.append('tspan').text(d.name);
+                } else {
+                    el.attr('fill', '#888').attr('font-size', '11px').attr('font-weight', '400');
+                    el.text(d.filename);
+                }
+            });
+        return sel;
+    }
+    var labels = applyLabelStyle(labelGroup.selectAll('text').data(nodes).join('text'));
 
     var nodeSizeScale = 1;
 
@@ -319,9 +340,19 @@ async function loadAndRender() {
         });
     node.call(drag);
 
+    function labelVisible(d) {
+        if (d._isSymbol) return document.getElementById('toggle-symbol-labels').checked;
+        return document.getElementById('toggle-labels').checked;
+    }
+
+    function defaultLabelOpacity(d) {
+        if (!labelVisible(d)) return 0;
+        if (currentZoom < 0.4) return 0;
+        return Math.min(1, (currentZoom - 0.3) * 3);
+    }
+
     function updateLabelVisibility() {
-        var showLabels = document.getElementById('toggle-labels').checked;
-        labels.style('opacity', !showLabels ? 0 : currentZoom < 0.4 ? 0 : Math.min(1, (currentZoom - 0.3) * 3));
+        labels.style('opacity', defaultLabelOpacity);
     }
 
     // === NodeExpander (D-70, D-71, D-72) ===
@@ -399,6 +430,8 @@ async function loadAndRender() {
         });
 
         rebuildSimulation();
+        updatePillCounts();
+        updateStateIndicator();
     }
 
     function collapseFileNode(fileId) {
@@ -426,6 +459,8 @@ async function loadAndRender() {
         });
 
         rebuildSimulation();
+        updatePillCounts();
+        updateStateIndicator();
     }
 
     function positionSymbols(fileNode, symbolNodes) {
@@ -491,12 +526,9 @@ async function loadAndRender() {
             .data(nodes, function(d) { return d.id; })
             .join(
                 function(enter) {
-                    return enter.append('text')
-                        .attr('text-anchor', 'middle').attr('fill', '#999')
-                        .attr('font-size', function(d) { return d._isSymbol ? '10px' : '11px'; })
-                        .attr('pointer-events', 'none')
-                        .text(function(d) { return d._isSymbol ? d.name : d.filename; })
-                        .style('opacity', 0).transition().duration(300).style('opacity', 1);
+                    var sel = enter.append('text');
+                    applyLabelStyle(sel);
+                    return sel.style('opacity', 0).transition().duration(300).style('opacity', 1);
                 },
                 function(update) { return update; },
                 function(exit) { return exit.transition().duration(200).style('opacity', 0).remove(); }
@@ -512,10 +544,10 @@ async function loadAndRender() {
             .join(
                 function(enter) {
                     return enter.append('line')
-                        .attr('stroke', '#444')
+                        .attr('stroke', function(d) { return d._isParentEdge ? '#444' : edgeColor(d); })
                         .attr('stroke-opacity', function(d) { return d._isParentEdge ? 0.15 : 0.25; })
                         .attr('stroke-dasharray', function(d) { return d._isParentEdge ? '2 2' : null; })
-                        .attr('marker-end', function(d) { return d._isParentEdge ? 'none' : 'url(#arrow)'; });
+                        .attr('marker-end', function(d) { return d._isParentEdge ? 'none' : edgeMarker(d); });
                 },
                 function(update) { return update; },
                 function(exit) { return exit.remove(); }
@@ -552,17 +584,17 @@ async function loadAndRender() {
                 .style('opacity', function(n) {
                     return (n.id === d.id || connected.has(n.id)) ? 1 : 0.12;
                 });
-            var showLabels = document.getElementById('toggle-labels').checked;
             labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
                 .style('opacity', function(n) {
-                    if (!showLabels || currentZoom < 0.4) return 0;
+                    if (!labelVisible(n) || currentZoom < 0.4) return 0;
                     return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
                 });
             link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
                 .attr('stroke', function(e) {
+                    if (e._isParentEdge) return '#666';
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
                     var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? '#a882ff' : '#444';
+                    return (si === d.id || ti === d.id) ? '#a882ff' : edgeColor(e);
                 })
                 .attr('stroke-opacity', function(e) {
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -570,9 +602,10 @@ async function loadAndRender() {
                     return (si === d.id || ti === d.id) ? 0.7 : 0.04;
                 })
                 .attr('marker-end', function(e) {
+                    if (e._isParentEdge) return 'none';
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
                     var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'url(#arrow)';
+                    return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : edgeMarker(e);
                 });
 
             // Tooltip
@@ -612,9 +645,9 @@ async function loadAndRender() {
                 .attr('fill', function(n) { return nodeColor(n); })
                 .style('opacity', 1);
             labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-                .style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+                .style('opacity', defaultLabelOpacity);
             link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-                .attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
+                .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
             document.getElementById('tooltip').style.display = 'none';
         });
 
@@ -663,18 +696,18 @@ async function loadAndRender() {
                 return (n.id === d.id || connected.has(n.id)) ? 1 : 0.1;
             });
 
-        var showLabels = document.getElementById('toggle-labels').checked;
         labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .style('opacity', function(n) {
-                if (!showLabels || currentZoom < 0.4) return 0;
+                if (!labelVisible(n) || currentZoom < 0.4) return 0;
                 return (n.id === d.id || connected.has(n.id)) ? 1 : 0.04;
             });
 
         link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('stroke', function(e) {
+                if (e._isParentEdge) return '#666';
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
                 var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (si === d.id || ti === d.id) ? '#a882ff' : '#444';
+                return (si === d.id || ti === d.id) ? '#a882ff' : edgeColor(e);
             })
             .attr('stroke-opacity', function(e) {
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -682,12 +715,13 @@ async function loadAndRender() {
                 return (si === d.id || ti === d.id) ? 0.7 : 0.04;
             })
             .attr('marker-end', function(e) {
+                if (e._isParentEdge) return 'none';
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
                 var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'url(#arrow)';
+                return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : edgeMarker(e);
             });
 
-        document.getElementById('focus-hint').style.display = 'block';
+        updateStateIndicator();
         // Hide tooltip when focus activates (it persists from the preceding hover)
         document.getElementById('tooltip').style.display = 'none';
         hoverActive = false;
@@ -701,10 +735,10 @@ async function loadAndRender() {
             .attr('fill', function(n) { return nodeColor(n); })
             .style('opacity', 1);
         labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-            .style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+            .style('opacity', defaultLabelOpacity);
         link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-            .attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
-        document.getElementById('focus-hint').style.display = 'none';
+            .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
+        updateStateIndicator();
     }
 
     // Exit focus on Escape or background click
@@ -774,7 +808,7 @@ async function loadAndRender() {
             // Clear highlight
             if (!focusActive) {
                 node.style('opacity', 1).attr('fill', function(d) { return nodeColor(d); });
-                labels.style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+                labels.style('opacity', defaultLabelOpacity);
             }
             return;
         }
@@ -793,7 +827,7 @@ async function loadAndRender() {
         node.style('opacity', function(d) { return matchIds.has(d.id) ? 1 : 0.12; })
             .attr('fill', function(d) { return matchIds.has(d.id) ? '#7f6df2' : nodeColor(d); });
         labels.style('opacity', function(d) {
-            if (!document.getElementById('toggle-labels').checked || currentZoom < 0.4) return 0;
+            if (!labelVisible(d) || currentZoom < 0.4) return 0;
             return matchIds.has(d.id) ? 1 : 0.06;
         });
     });
@@ -828,7 +862,7 @@ async function loadAndRender() {
             this.value = '';
             this.blur();
             node.style('opacity', 1).attr('fill', function(d) { return nodeColor(d); });
-            labels.style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+            labels.style('opacity', defaultLabelOpacity);
         }
     });
 
@@ -1219,10 +1253,9 @@ async function loadAndRender() {
                 return 0.08;
             });
 
-        var showLabels = document.getElementById('toggle-labels').checked;
         labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .style('opacity', function(n) {
-                if (!showLabels || currentZoom < 0.4) return 0;
+                if (!labelVisible(n) || currentZoom < 0.4) return 0;
                 if (n.id === sourceNode.id) return 1;
                 var depth = depthMap.get(n.id);
                 if (depth !== undefined) return depth <= 2 ? 1 : 0.5;
@@ -1236,7 +1269,7 @@ async function loadAndRender() {
                 var sd = depthMap.get(si), td = depthMap.get(ti);
                 var srcIn = si === sourceNode.id || sd !== undefined;
                 var tgtIn = ti === sourceNode.id || td !== undefined;
-                return srcIn && tgtIn ? '#a882ff' : '#444';
+                return srcIn && tgtIn ? '#a882ff' : edgeColor(e);
             })
             .attr('stroke-opacity', function(e) {
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -1250,6 +1283,7 @@ async function loadAndRender() {
         var promptEl = document.getElementById('blast-radius-prompt');
         promptEl.querySelector('.ctrl-label').textContent =
             depthMap.size + '/' + nodes.length + ' files affected (' + maxDepth + ' hops max)';
+        updateStateIndicator();
     }
 
     function clearBlastRadius() {
@@ -1258,9 +1292,10 @@ async function loadAndRender() {
             .attr('fill', function(n) { return nodeColor(n); })
             .style('opacity', 1);
         labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-            .style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+            .style('opacity', defaultLabelOpacity);
         link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-            .attr('stroke', '#444').attr('stroke-opacity', 0.25);
+            .attr('stroke', edgeColor).attr('stroke-opacity', 0.25);
+        updateStateIndicator();
     }
 
     document.getElementById('toggle-blast-radius').addEventListener('change', function() {
@@ -1311,30 +1346,52 @@ async function loadAndRender() {
     }
 
     function applyFilters() {
+        var focusNode = focusActive && focusedNodeId ? nodes.find(function(n) { return n.id === focusedNodeId; }) : null;
+        var focusConnected = focusNode ? (adjacency.get(focusNode.id) || new Set()) : null;
+
         node.style('opacity', function(d) {
-            return isNodeVisible(d) ? 1 : 0.08;
+            if (!isNodeVisible(d)) return 0.08;
+            if (focusNode) return (d.id === focusNode.id || focusConnected.has(d.id)) ? 1 : 0.1;
+            return 1;
         }).style('pointer-events', function(d) {
             return isNodeVisible(d) ? null : 'none';
         });
 
         labels.style('opacity', function(d) {
-            if (!document.getElementById('toggle-labels').checked || currentZoom < 0.4) return 0;
-            return isNodeVisible(d) ? 1 : 0.04;
+            if (!labelVisible(d) || currentZoom < 0.4) return 0;
+            if (!isNodeVisible(d)) return 0.04;
+            if (focusNode) return (d.id === focusNode.id || focusConnected.has(d.id)) ? 1 : 0.04;
+            return 1;
         });
 
-        link.style('opacity', function(e) {
-            if (!isEdgeVisible(e)) return 0;
-            // Also check if both source and target nodes are visible
+        link.attr('stroke', function(e) {
+            if (e._isParentEdge) return focusNode ? '#666' : '#444';
+            if (!focusNode) return edgeColor(e);
             var si = typeof e.source === 'object' ? e.source.id : e.source;
             var ti = typeof e.target === 'object' ? e.target.id : e.target;
-            var srcNode = nodes.find(function(n) { return n.id === si; });
-            var tgtNode = nodes.find(function(n) { return n.id === ti; });
-            if (srcNode && !isNodeVisible(srcNode)) return 0;
-            if (tgtNode && !isNodeVisible(tgtNode)) return 0;
+            return (si === focusNode.id || ti === focusNode.id) ? '#a882ff' : edgeColor(e);
+        })
+        .attr('marker-end', function(e) {
+            if (e._isParentEdge) return 'none';
+            if (!focusNode) return edgeMarker(e);
+            var si = typeof e.source === 'object' ? e.source.id : e.source;
+            var ti = typeof e.target === 'object' ? e.target.id : e.target;
+            return (si === focusNode.id || ti === focusNode.id) ? 'url(#arrow-active)' : edgeMarker(e);
+        })
+        .style('opacity', function(e) {
+            if (!isEdgeVisible(e)) return 0;
+            var si = typeof e.source === 'object' ? e.source.id : e.source;
+            var ti = typeof e.target === 'object' ? e.target.id : e.target;
+            var srcN = nodes.find(function(n) { return n.id === si; });
+            var tgtN = nodes.find(function(n) { return n.id === ti; });
+            if (srcN && !isNodeVisible(srcN)) return 0;
+            if (tgtN && !isNodeVisible(tgtN)) return 0;
+            if (focusNode) return (si === focusNode.id || ti === focusNode.id) ? 0.7 : 0.04;
             return 0.25;
         }).style('pointer-events', function(e) {
             return isEdgeVisible(e) ? null : 'none';
         });
+        updatePillCounts();
     }
 
     // Directory filter (INTR-05)
@@ -1403,8 +1460,34 @@ async function loadAndRender() {
         });
     }
 
+    function countForPill(filterName) {
+        var mapping = pillMap[filterName];
+        if (!mapping) return 0;
+        if (mapping.type === 'symbol') {
+            return nodes.filter(function(n) {
+                if (!n._isSymbol) return false;
+                var k = n.kind === 'interface' ? 'type' : n.kind;
+                return k === mapping.stateKey;
+            }).length;
+        } else {
+            return edges.filter(function(e) {
+                return (e.edge_type || 'import') === mapping.stateKey;
+            }).length;
+        }
+    }
+
+    function updatePillCounts() {
+        document.querySelectorAll('.pill').forEach(function(pill) {
+            var filterName = pill.getAttribute('data-filter');
+            var count = countForPill(filterName);
+            var label = filterName.charAt(0).toUpperCase() + filterName.slice(1);
+            pill.textContent = label + ' · ' + count;
+        });
+    }
+
     // Initialize pills as active (all filters start checked)
     syncPillsFromState();
+    updatePillCounts();
 
     document.querySelectorAll('.pill').forEach(function(pill) {
         pill.addEventListener('click', function() {
@@ -1457,7 +1540,8 @@ async function loadAndRender() {
 
         node.style('display', null).style('opacity', 1).style('pointer-events', null);
         labels.style('display', null).style('opacity', currentZoom < 0.4 ? 0 : 1);
-        link.style('opacity', 0.25).style('pointer-events', null);
+        link.attr('stroke', edgeColor).style('opacity', 0.25).style('pointer-events', null);
+        updatePillCounts();
     });
 
     // Filters: search
@@ -1482,11 +1566,13 @@ async function loadAndRender() {
 
     // Display: arrows
     document.getElementById('toggle-arrows').addEventListener('change', function() {
-        link.attr('marker-end', this.checked ? 'url(#arrow)' : 'none');
+        var checked = this.checked;
+        link.attr('marker-end', function(e) { return checked ? edgeMarker(e) : 'none'; });
     });
 
     // Display: labels
     document.getElementById('toggle-labels').addEventListener('change', updateLabelVisibility);
+    document.getElementById('toggle-symbol-labels').addEventListener('change', updateLabelVisibility);
 
     // Display: node size
     document.getElementById('slider-node-size').addEventListener('input', function() {
@@ -1498,7 +1584,8 @@ async function loadAndRender() {
 
     // Display: label size
     document.getElementById('slider-label-size').addEventListener('input', function() {
-        labels.attr('font-size', this.value + 'px');
+        var baseSize = parseFloat(this.value);
+        labels.attr('font-size', function(d) { return (d._isSymbol ? baseSize - 2 : baseSize) + 'px'; });
     });
 
     // Forces: center
