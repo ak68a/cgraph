@@ -1164,63 +1164,92 @@ async function loadAndRender() {
     var blastRadiusSourceId = null;
 
     function computeBlastRadius(nodeId) {
-        // BFS over edges to find all transitive dependents (who depends on nodeId?)
-        // An edge from A -> B means A depends on B (import/call).
-        // Blast radius of B = all nodes that directly or transitively depend on B.
-        // Reverse: from nodeId, traverse edges where nodeId is the TARGET, collect sources.
-        var dependents = new Set();
-        var queue = [nodeId];
+        // BFS returning Map of nodeId -> depth (hop distance from source)
+        var depthMap = new Map();
+        var queue = [{id: nodeId, depth: 0}];
+        depthMap.set(nodeId, 0);
         var allEdgesForTraversal = edges.concat(symbolEdges);
 
         while (queue.length > 0) {
-            var current = queue.shift();
+            var item = queue.shift();
             allEdgesForTraversal.forEach(function(e) {
                 var src = typeof e.source === 'object' ? e.source.id : e.source;
                 var tgt = typeof e.target === 'object' ? e.target.id : e.target;
-                // If edge points TO current, the source DEPENDS on current
-                if (tgt === current && !dependents.has(src)) {
-                    dependents.add(src);
-                    queue.push(src);
+                if (tgt === item.id && !depthMap.has(src)) {
+                    depthMap.set(src, item.depth + 1);
+                    queue.push({id: src, depth: item.depth + 1});
                 }
             });
         }
-        return dependents;
+        depthMap.delete(nodeId);
+        return depthMap;
+    }
+
+    function blastColorForDepth(depth) {
+        if (depth === 1) return '#c084fc';
+        if (depth === 2) return '#a855f7';
+        if (depth === 3) return '#7c3aed';
+        return '#5b21b6';
+    }
+
+    function blastOpacityForDepth(depth) {
+        if (depth === 1) return 1.0;
+        if (depth === 2) return 0.75;
+        if (depth === 3) return 0.55;
+        return 0.4;
     }
 
     function showBlastRadius(sourceNode) {
         blastRadiusSourceId = sourceNode.id;
-        var dependents = computeBlastRadius(sourceNode.id);
+        var depthMap = computeBlastRadius(sourceNode.id);
+        var maxDepth = 0;
+        depthMap.forEach(function(d) { if (d > maxDepth) maxDepth = d; });
 
         node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('fill', function(n) {
                 if (n.id === sourceNode.id) return '#7f6df2';
-                if (dependents.has(n.id)) return '#a882ff';
+                var depth = depthMap.get(n.id);
+                if (depth !== undefined) return blastColorForDepth(depth);
                 return nodeColor(n);
             })
             .style('opacity', function(n) {
-                if (n.id === sourceNode.id || dependents.has(n.id)) return 1;
-                return 0.15;
+                if (n.id === sourceNode.id) return 1;
+                var depth = depthMap.get(n.id);
+                if (depth !== undefined) return blastOpacityForDepth(depth);
+                return 0.08;
             });
 
+        var showLabels = document.getElementById('toggle-labels').checked;
         labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .style('opacity', function(n) {
-                if (!document.getElementById('toggle-labels').checked || currentZoom < 0.4) return 0;
-                return (n.id === sourceNode.id || dependents.has(n.id)) ? 1 : 0.04;
+                if (!showLabels || currentZoom < 0.4) return 0;
+                if (n.id === sourceNode.id) return 1;
+                var depth = depthMap.get(n.id);
+                if (depth !== undefined) return depth <= 2 ? 1 : 0.5;
+                return 0.04;
             });
 
         link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('stroke', function(e) {
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
                 var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (dependents.has(si) || si === sourceNode.id) && (dependents.has(ti) || ti === sourceNode.id)
-                    ? '#a882ff' : '#444';
+                var sd = depthMap.get(si), td = depthMap.get(ti);
+                var srcIn = si === sourceNode.id || sd !== undefined;
+                var tgtIn = ti === sourceNode.id || td !== undefined;
+                return srcIn && tgtIn ? '#a882ff' : '#444';
             })
             .attr('stroke-opacity', function(e) {
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
                 var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (dependents.has(si) || si === sourceNode.id) && (dependents.has(ti) || ti === sourceNode.id)
-                    ? 0.6 : 0.04;
+                var sd = depthMap.get(si), td = depthMap.get(ti);
+                var srcIn = si === sourceNode.id || sd !== undefined;
+                var tgtIn = ti === sourceNode.id || td !== undefined;
+                return srcIn && tgtIn ? 0.5 : 0.04;
             });
+
+        var promptEl = document.getElementById('blast-radius-prompt');
+        promptEl.querySelector('.ctrl-label').textContent =
+            depthMap.size + '/' + nodes.length + ' files affected (' + maxDepth + ' hops max)';
     }
 
     function clearBlastRadius() {
