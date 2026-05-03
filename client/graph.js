@@ -53,12 +53,12 @@ async function loadAndRender() {
     var defs = svg.append('defs');
 
     defs.append('marker').attr('id', 'arrow')
-        .attr('viewBox', '-0 -5 10 10').attr('refX', 10).attr('refY', 0)
+        .attr('viewBox', '-0 -5 10 10').attr('refX', 0).attr('refY', 0)
         .attr('orient', 'auto').attr('markerWidth', 6).attr('markerHeight', 4)
       .append('path').attr('d', 'M 0,-5 L 10,0 L 0,5').attr('fill', '#444');
 
     defs.append('marker').attr('id', 'arrow-active')
-        .attr('viewBox', '-0 -5 10 10').attr('refX', 10).attr('refY', 0)
+        .attr('viewBox', '-0 -5 10 10').attr('refX', 0).attr('refY', 0)
         .attr('orient', 'auto').attr('markerWidth', 6).attr('markerHeight', 4)
       .append('path').attr('d', 'M 0,-5 L 10,0 L 0,5').attr('fill', '#a882ff');
 
@@ -103,8 +103,8 @@ async function loadAndRender() {
         var dist = Math.sqrt(dx * dx + dy * dy);
         if (dist === 0) return { x: target.x, y: target.y };
         return {
-            x: target.x - (dx / dist) * (targetRadius + 4),
-            y: target.y - (dy / dist) * (targetRadius + 4)
+            x: target.x - (dx / dist) * (targetRadius + 6),
+            y: target.y - (dy / dist) * (targetRadius + 6)
         };
     }
 
