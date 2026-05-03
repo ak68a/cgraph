@@ -84,10 +84,9 @@
 
     .ctrl-row {
       display: flex; align-items: center;
-      justify-content: space-between;
-      height: 28px;
+      height: 28px; gap: 6px;
     }
-    .ctrl-label { color: #999; font-size: 11px; }
+    .ctrl-label { color: #999; font-size: 11px; flex: 1; }
     .ctrl-row input[type="range"] {
       width: 96px; height: 4px;
       -webkit-appearance: none; appearance: none;
@@ -151,13 +150,8 @@
 
     .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
     .legend-dot.legend-line { width: 14px; height: 3px; border-radius: 2px; }
-    .pill.active { background: #7f6df2 !important; color: #fff !important; border-color: #7f6df2 !important; }
-    .pill[data-filter="imports"].active { background: #2a6ab5 !important; border-color: #4a9eff !important; }
-    .pill[data-filter="calls"].active { background: #7a2030 !important; border-color: #ff6e40 !important; }
     .pill:hover { background: #444 !important; color: #ddd !important; }
-    .pill.active:hover { background: #6b5ce0 !important; }
-    .pill[data-filter="imports"].active:hover { background: #3578c9 !important; }
-    .pill[data-filter="calls"].active:hover { background: #8a3040 !important; }
+    .pill.active:hover { filter: brightness(1.2); }
     #header-search:focus { border-color: #7f6df2; }
     #btn-back:not(:disabled), #btn-forward:not(:disabled) { opacity: 1; cursor: pointer; background: #3a3a3a; border-color: #555; color: #ddd; }
     #btn-back:not(:disabled):hover, #btn-forward:not(:disabled):hover { background: #4a4a4a; color: #fff; border-color: #7f6df2; }
@@ -169,6 +163,72 @@
     .palette-no-results { padding:16px; text-align:center; color:#666; font-size:13px; }
 
     #btn-fit:hover { background: #444; color: #ddd; }
+
+    /* Detail panel */
+    #detail-panel {
+      position: fixed; top: 52px; left: 12px;
+      width: 280px; max-height: calc(100vh - 64px);
+      background: #2a2a2a; border: 1px solid #3a3a3a;
+      border-radius: 12px; z-index: 998;
+      overflow-y: auto; overflow-x: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      display: none;
+    }
+    #detail-panel.open { display: block; }
+    #detail-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px 6px;
+    }
+    #detail-node-info { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    #detail-kind {
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+      background: #444; color: #ccc;
+    }
+    #detail-name {
+      font-size: 13px; font-weight: 500; color: #fff;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #detail-close {
+      background: none; border: none; color: #666; font-size: 18px;
+      cursor: pointer; padding: 0 2px; line-height: 1; flex-shrink: 0;
+    }
+    #detail-close:hover { color: #ddd; }
+    #detail-path {
+      padding: 0 12px 8px; font-size: 11px; color: #666;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      border-bottom: 1px solid #333;
+    }
+    #detail-body { padding: 4px 0 8px; }
+    .detail-section-title {
+      padding: 6px 12px 4px; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px; color: #666;
+    }
+    .detail-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 12px; cursor: pointer; font-size: 12px; color: #bbb;
+      min-width: 0;
+    }
+    .detail-item:hover { background: #333; color: #fff; }
+    .detail-item span:nth-child(2) {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+    }
+    .detail-item .detail-dot {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .detail-item .detail-edge-type {
+      font-size: 9px; color: #555; margin-left: auto; flex-shrink: 0;
+    }
+    .detail-empty {
+      padding: 6px 12px; font-size: 11px; color: #555; font-style: italic;
+    }
+    .solo-btn {
+      background: none; border: 1px solid #444; color: #666; cursor: pointer;
+      font-size: 9px; padding: 1px 5px; border-radius: 3px; line-height: 1.2;
+      flex-shrink: 0; transition: all 0.15s;
+    }
+    .solo-btn:hover { color: #ddd; border-color: #666; background: #3a3a3a; }
+    .solo-btn.active { background: #7f6df2; border-color: #7f6df2; color: #fff; }
   </style>
 </head>
 <body>
@@ -184,12 +244,7 @@
       <input type="text" id="header-search" placeholder="Search symbols..." style="width:200px;padding:4px 8px;background:#333;border:1px solid #444;border-radius:6px;color:#ddd;font-size:13px;outline:none;" />
     </div>
     <div id="header-center" style="display:flex;align-items:center;gap:8px;">
-      <div id="quick-filters" style="display:flex;gap:4px;">
-        <button class="pill" data-filter="functions" style="padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;">Functions</button>
-        <button class="pill" data-filter="classes" style="padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;">Classes</button>
-        <button class="pill" data-filter="imports" style="padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;">Imports</button>
-        <button class="pill" data-filter="calls" style="padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;">Calls</button>
-      </div>
+      <div id="quick-filters" style="display:flex;gap:4px;"></div>
     </div>
     <div id="header-right" style="display:flex;align-items:center;gap:8px;">
       <span id="stats"></span>
@@ -241,35 +296,43 @@
         <div style="margin-top:6px;margin-bottom:2px;"><span class="ctrl-label" style="font-weight:500;color:#dcddde;">Symbol types</span></div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot" style="background:#2dd4bf;"></span>Function</span>
+          <button class="solo-btn" data-solo="symbol:function" title="Solo — show only this type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-fn" checked><span class="toggle-track"></span></label>
         </div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot" style="background:#f87171;"></span>Class</span>
+          <button class="solo-btn" data-solo="symbol:class" title="Solo — show only this type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-class" checked><span class="toggle-track"></span></label>
         </div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot" style="background:#fbbf24;"></span>Type</span>
+          <button class="solo-btn" data-solo="symbol:type" title="Solo — show only this type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-type" checked><span class="toggle-track"></span></label>
         </div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot" style="background:#a78bfa;"></span>Hook</span>
+          <button class="solo-btn" data-solo="symbol:hook" title="Solo — show only this type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-hook" checked><span class="toggle-track"></span></label>
         </div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot" style="background:#4ade80;"></span>Enum</span>
+          <button class="solo-btn" data-solo="symbol:enum" title="Solo — show only this type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-enum" checked><span class="toggle-track"></span></label>
         </div>
         <div style="margin-top:6px;margin-bottom:2px;"><span class="ctrl-label" style="font-weight:500;color:#dcddde;">Edge types</span></div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot legend-line" style="background:#4a9eff;"></span>Import</span>
+          <button class="solo-btn" data-solo="edge:import" title="Solo — show only this edge type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-edge-import" checked><span class="toggle-track"></span></label>
         </div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot legend-line" style="background:#ff6e40;"></span>Call</span>
+          <button class="solo-btn" data-solo="edge:call" title="Solo — show only this edge type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-edge-call" checked><span class="toggle-track"></span></label>
         </div>
         <div class="ctrl-row">
           <span class="ctrl-label"><span class="legend-dot legend-line" style="background:#b392f0;"></span>Type reference</span>
+          <button class="solo-btn" data-solo="edge:type_ref" title="Solo — show only this edge type">solo</button>
           <label class="toggle-switch"><input type="checkbox" id="filter-edge-typeref" checked><span class="toggle-track"></span></label>
         </div>
         <div style="margin-top:10px;margin-bottom:6px;"><span class="ctrl-label" style="font-weight:500;color:#dcddde;">Directory</span></div>
@@ -371,6 +434,17 @@
 
   </div>
 
+  <div id="detail-panel">
+    <div id="detail-header">
+      <div id="detail-node-info">
+        <span id="detail-kind"></span>
+        <span id="detail-name"></span>
+      </div>
+      <button id="detail-close" title="Close">&times;</button>
+    </div>
+    <div id="detail-path"></div>
+    <div id="detail-body"></div>
+  </div>
   <button id="btn-fit" title="Fit to screen (F)" style="position:fixed;bottom:16px;left:16px;width:32px;height:32px;background:#333;border:1px solid #444;border-radius:8px;color:#999;cursor:pointer;z-index:100;display:flex;align-items:center;justify-content:center;">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
   </button>

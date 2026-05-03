@@ -263,14 +263,15 @@ async function loadAndRender() {
         if (adjacency.has(tgtId)) adjacency.get(tgtId).add(srcId);
     });
 
-    function adjustedEndpoint(source, target, targetRadius) {
+    function adjustedEndpoint(source, target, targetRadius, arrowPad) {
         var dx = target.x - source.x;
         var dy = target.y - source.y;
         var dist = Math.sqrt(dx * dx + dy * dy);
         if (dist === 0) return { x: target.x, y: target.y };
+        var offset = targetRadius + (arrowPad !== undefined ? arrowPad : 4);
         return {
-            x: target.x - (dx / dist) * (targetRadius + 6),
-            y: target.y - (dy / dist) * (targetRadius + 6)
+            x: target.x - (dx / dist) * offset,
+            y: target.y - (dy / dist) * offset
         };
     }
 
@@ -294,8 +295,7 @@ async function loadAndRender() {
                 el.selectAll('*').remove();
                 if (d._isSymbol) {
                     el.attr('fill', '#ccc').attr('font-size', '9px').attr('font-weight', '400');
-                    el.append('tspan').text('● ').attr('fill', NODE_COLORS[d.kind] || '#555').attr('font-size', '7px');
-                    el.append('tspan').text(d.name);
+                    el.text(d.name);
                 } else {
                     el.attr('fill', '#888').attr('font-size', '11px').attr('font-weight', '400');
                     el.text(d.filename);
@@ -315,7 +315,8 @@ async function loadAndRender() {
             var src = typeof d.source === 'object' ? d.source : null;
             var tgt = typeof d.target === 'object' ? d.target : null;
             if (!src || !tgt) return;
-            var ep = adjustedEndpoint(src, tgt, tgt.radius * nodeSizeScale);
+            var pad = d._isParentEdge ? 0 : 4;
+            var ep = adjustedEndpoint(src, tgt, tgt.radius * nodeSizeScale, pad);
             d3.select(this).attr('x1', src.x).attr('y1', src.y).attr('x2', ep.x).attr('y2', ep.y);
         });
     }
@@ -371,7 +372,7 @@ async function loadAndRender() {
                 name: s.name,
                 kind: s.kind,
                 file_path: s.file_path,
-                radius: 6,
+                radius: 8,
                 _isSymbol: true,
                 _parentId: fileId,
                 is_dead_code: s.is_dead_code,
@@ -513,11 +514,11 @@ async function loadAndRender() {
                         .attr('stroke', 'none')
                         .style('cursor', 'grab')
                         .call(drag)
-                        .transition().duration(300).attr('r', function(d) { return d.radius * nodeSizeScale; });
+                        .transition('enter-r').duration(300).attr('r', function(d) { return d.radius * nodeSizeScale; });
                 },
                 function(update) { return update; },
                 function(exit) {
-                    return exit.transition().duration(200).attr('r', 0).remove();
+                    return exit.transition('enter-r').duration(200).attr('r', 0).remove();
                 }
             );
 
@@ -578,7 +579,7 @@ async function loadAndRender() {
             if (focusActive) return;
             hoverActive = true;
             var connected = adjacency.get(d.id) || new Set();
-            node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .attr('fill', function(n) {
                     if (n.id === d.id) return '#7f6df2';
                     if (connected.has(n.id)) return '#a882ff';
@@ -587,12 +588,12 @@ async function loadAndRender() {
                 .style('opacity', function(n) {
                     return (n.id === d.id || connected.has(n.id)) ? 1 : 0.12;
                 });
-            labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .style('opacity', function(n) {
                     if (!labelVisible(n) || currentZoom < 0.4) return 0;
                     return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
                 });
-            link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .attr('stroke', function(e) {
                     if (e._isParentEdge) return '#666';
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -608,7 +609,7 @@ async function loadAndRender() {
                     if (e._isParentEdge) return 'none';
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
                     var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : edgeMarker(e);
+                    return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'none';
                 });
 
             // Tooltip
@@ -644,12 +645,12 @@ async function loadAndRender() {
         sel.on('mouseleave', function() {
             if (focusActive) return;
             hoverActive = false;
-            node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            node.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
                 .attr('fill', function(n) { return nodeColor(n); })
                 .style('opacity', 1);
-            labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            labels.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
                 .style('opacity', defaultLabelOpacity);
-            link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            link.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
                 .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
             document.getElementById('tooltip').style.display = 'none';
         });
@@ -658,9 +659,12 @@ async function loadAndRender() {
             event.stopPropagation();
 
             // If file node: toggle expand/collapse
+            // Only collapse if this file is already the focused node (deliberate toggle)
             if (!d._isSymbol) {
                 if (expandedFiles.has(d.id)) {
-                    collapseFileNode(d.id);
+                    if (focusedNodeId === d.id) {
+                        collapseFileNode(d.id);
+                    }
                 } else {
                     expandFileNode(d);
                 }
@@ -689,7 +693,7 @@ async function loadAndRender() {
         focusedNodeId = d.id;
         var connected = adjacency.get(d.id) || new Set();
 
-        node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+        node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('fill', function(n) {
                 if (n.id === d.id) return '#7f6df2';
                 if (connected.has(n.id)) return nodeColor(n);
@@ -699,13 +703,13 @@ async function loadAndRender() {
                 return (n.id === d.id || connected.has(n.id)) ? 1 : 0.1;
             });
 
-        labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+        labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
             .style('opacity', function(n) {
                 if (!labelVisible(n) || currentZoom < 0.4) return 0;
                 return (n.id === d.id || connected.has(n.id)) ? 1 : 0.04;
             });
 
-        link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+        link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('stroke', function(e) {
                 if (e._isParentEdge) return '#666';
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -721,10 +725,11 @@ async function loadAndRender() {
                 if (e._isParentEdge) return 'none';
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
                 var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : edgeMarker(e);
+                return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'none';
             });
 
         updateStateIndicator();
+        showDetailPanel(d);
         // Hide tooltip when focus activates (it persists from the preceding hover)
         document.getElementById('tooltip').style.display = 'none';
         hoverActive = false;
@@ -734,15 +739,295 @@ async function loadAndRender() {
     function clearFocus() {
         focusActive = false;
         focusedNodeId = null;
-        node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+        node.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
             .attr('fill', function(n) { return nodeColor(n); })
             .style('opacity', 1);
-        labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+        labels.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
             .style('opacity', defaultLabelOpacity);
-        link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+        link.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
             .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
         updateStateIndicator();
+        hideDetailPanel();
     }
+
+    // === Detail Panel ===
+    var detailPanel = document.getElementById('detail-panel');
+    var EDGE_TYPE_LABELS = { import: 'import', call: 'call', type_ref: 'type ref', re_export: 're-export' };
+
+    function clearPanelHovers() {
+        node.transition('panel-hover').duration(0)
+            .attr('r', function(n) { return (n.radius || 8) * nodeSizeScale; })
+            .attr('stroke', 'none').attr('stroke-width', 0);
+    }
+
+    function showDetailPanel(d) {
+        clearPanelHovers();
+        var panel = detailPanel;
+        var kindEl = document.getElementById('detail-kind');
+        var nameEl = document.getElementById('detail-name');
+        var pathEl = document.getElementById('detail-path');
+        var bodyEl = document.getElementById('detail-body');
+
+        var kind = d._isSymbol ? (d.kind || 'symbol') : 'file';
+        var name = d._isSymbol ? d.name : (d.filename || d.id.split('/').pop());
+        var path = d._isSymbol ? d.file_path : (d.path || d.id);
+
+        kindEl.textContent = kind;
+        if (kind === 'file') {
+            kindEl.style.background = '#666';
+            kindEl.style.color = '#ddd';
+        } else {
+            kindEl.style.background = (NODE_COLORS[kind] || '#555') + '66';
+            kindEl.style.color = NODE_COLORS[kind] || '#999';
+        }
+        nameEl.textContent = name;
+        pathEl.textContent = path;
+
+        bodyEl.innerHTML = '';
+
+        // Dead code section with actual symbol names
+        var filePath = d._isSymbol ? d.file_path : d.id;
+        if (d._isSymbol) {
+            if (deadCodeConfirmed.has(d.id)) {
+                addDeadCodeBadge(bodyEl, 'Confirmed dead code', '#f87171',
+                    'No file in the scanned codebase imports or calls this symbol. It may still be used via dynamic imports, string-based routing, or config-driven registration.');
+            } else if (deadCodeSuspicious.has(d.id)) {
+                addDeadCodeBadge(bodyEl, 'Suspicious dead code', '#fbbf24',
+                    'This symbol has very few incoming references and may be unused.');
+            }
+        } else {
+            var deadSymbols = (symbolsByFile[filePath] || []).filter(function(s) { return s.is_dead_code; });
+            if (deadSymbols.length > 0) {
+                var dcSection = document.createElement('div');
+                dcSection.style.cssText = 'border-bottom:1px solid #333;padding:6px 0;';
+
+                var dcHeader = document.createElement('div');
+                dcHeader.className = 'detail-section-title';
+                dcHeader.style.color = '#f87171';
+                dcHeader.textContent = 'Dead code (' + deadSymbols.length + ')';
+                dcSection.appendChild(dcHeader);
+
+                var dcExpl = document.createElement('div');
+                dcExpl.style.cssText = 'padding:0 12px 4px;font-size:10px;color:#666;line-height:1.4;';
+                dcExpl.textContent = 'Symbols with no incoming imports or calls in the scanned codebase.';
+                dcSection.appendChild(dcExpl);
+
+                deadSymbols.forEach(function(s) {
+                    var row = document.createElement('div');
+                    row.className = 'detail-item';
+                    var dot = document.createElement('span');
+                    dot.className = 'detail-dot';
+                    dot.style.background = s.dead_code_confidence === 'confirmed' ? '#f87171' : '#fbbf24';
+                    row.appendChild(dot);
+                    var nameSpan = document.createElement('span');
+                    nameSpan.textContent = s.name;
+                    row.appendChild(nameSpan);
+                    var confSpan = document.createElement('span');
+                    confSpan.className = 'detail-edge-type';
+                    confSpan.textContent = s.dead_code_confidence;
+                    confSpan.style.color = s.dead_code_confidence === 'confirmed' ? '#f87171' : '#fbbf24';
+                    row.appendChild(confSpan);
+                    dcSection.appendChild(row);
+                });
+
+                bodyEl.appendChild(dcSection);
+            }
+        }
+
+        // Collect edges
+        var outgoing = [];
+        var incoming = [];
+        var seen = new Set();
+
+        edges.forEach(function(e) {
+            if (e._isParentEdge) return;
+            var si = typeof e.source === 'object' ? e.source.id : e.source;
+            var ti = typeof e.target === 'object' ? e.target.id : e.target;
+            if (si === d.id) { outgoing.push({ nodeId: ti, edgeType: e.edge_type }); seen.add('o:' + ti + ':' + e.edge_type); }
+            if (ti === d.id) { incoming.push({ nodeId: si, edgeType: e.edge_type }); seen.add('i:' + si + ':' + e.edge_type); }
+        });
+
+        if (!d._isSymbol) {
+            symbolEdges.forEach(function(se) {
+                var src = typeof se.source === 'object' ? se.source.id : se.source;
+                var tgt = typeof se.target === 'object' ? se.target.id : se.target;
+                var srcFile = src.indexOf('::') !== -1 ? src.substring(0, src.indexOf('::')) : src;
+                var tgtFile = tgt.indexOf('::') !== -1 ? tgt.substring(0, tgt.indexOf('::')) : tgt;
+                if (srcFile === d.id && tgtFile !== d.id) {
+                    var displayId = nodes.some(function(n) { return n.id === tgt; }) ? tgt : tgtFile;
+                    var key = 'o:' + displayId + ':' + se.edge_type;
+                    if (!seen.has(key)) { outgoing.push({ nodeId: displayId, edgeType: se.edge_type }); seen.add(key); }
+                }
+                if (tgtFile === d.id && srcFile !== d.id) {
+                    var displayId2 = nodes.some(function(n) { return n.id === src; }) ? src : srcFile;
+                    var key2 = 'i:' + displayId2 + ':' + se.edge_type;
+                    if (!seen.has(key2)) { incoming.push({ nodeId: displayId2, edgeType: se.edge_type }); seen.add(key2); }
+                }
+            });
+        }
+
+        function findNodeName(id) {
+            var n = nodes.find(function(nd) { return nd.id === id; });
+            if (n) return n._isSymbol ? n.name : (n.filename || n.id.split('/').pop());
+            var parts = id.split('::');
+            if (parts.length > 1) return parts[parts.length - 1];
+            return id.split('/').pop();
+        }
+
+        function findNodeKind(id) {
+            var n = nodes.find(function(nd) { return nd.id === id; });
+            if (n && n._isSymbol) return n.kind || 'symbol';
+            if (n) return 'file';
+            if (id.indexOf('::') !== -1) return 'symbol';
+            return 'file';
+        }
+
+        var outItems = outgoing.map(function(o) {
+            return { nodeId: o.nodeId, name: findNodeName(o.nodeId), kind: findNodeKind(o.nodeId), edgeType: o.edgeType };
+        });
+        var inItems = incoming.map(function(i) {
+            return { nodeId: i.nodeId, name: findNodeName(i.nodeId), kind: findNodeKind(i.nodeId), edgeType: i.edgeType };
+        });
+
+        // Summary line
+        var summaryParts = [];
+        if (outItems.length > 0) summaryParts.push('depends on ' + outItems.length);
+        if (inItems.length > 0) summaryParts.push(inItems.length + ' dependents');
+        if (summaryParts.length > 0) {
+            var summary = document.createElement('div');
+            summary.style.cssText = 'padding:6px 12px;font-size:11px;color:#888;border-bottom:1px solid #333;';
+            summary.textContent = summaryParts.join(' · ');
+            bodyEl.appendChild(summary);
+        }
+
+        addGroupedSection('Depends on', '→', outItems, bodyEl);
+        addGroupedSection('Depended on by', '←', inItems, bodyEl);
+
+        if (outItems.length === 0 && inItems.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'detail-empty';
+            empty.textContent = 'No connections';
+            bodyEl.appendChild(empty);
+        }
+
+        panel.classList.add('open');
+    }
+
+    function addDeadCodeBadge(container, text, color, explanation) {
+        var wrapper = document.createElement('div');
+        wrapper.style.cssText = 'border-bottom:1px solid #333;padding:6px 12px;';
+        var badge = document.createElement('div');
+        badge.style.cssText = 'font-size:11px;color:' + color + ';display:flex;align-items:center;gap:6px;';
+        var dot = document.createElement('span');
+        dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' + color + ';flex-shrink:0;';
+        badge.appendChild(dot);
+        badge.appendChild(document.createTextNode(text));
+        wrapper.appendChild(badge);
+        if (explanation) {
+            var explEl = document.createElement('div');
+            explEl.style.cssText = 'font-size:10px;color:#666;margin-top:4px;line-height:1.4;';
+            explEl.textContent = explanation;
+            wrapper.appendChild(explEl);
+        }
+        container.appendChild(wrapper);
+    }
+
+    function addGroupedSection(title, arrow, items, container) {
+        if (items.length === 0) return;
+
+        var groups = {};
+        items.forEach(function(item) {
+            var key = item.edgeType || 'import';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
+        });
+
+        var sectionEl = document.createElement('div');
+        sectionEl.style.cssText = 'border-bottom:1px solid #333;padding:4px 0;';
+
+        var headerEl = document.createElement('div');
+        headerEl.className = 'detail-section-title';
+        headerEl.style.display = 'flex';
+        headerEl.style.justifyContent = 'space-between';
+        headerEl.style.alignItems = 'center';
+        var headerText = document.createElement('span');
+        headerText.textContent = title + ' (' + items.length + ')';
+        headerEl.appendChild(headerText);
+        var arrowEl = document.createElement('span');
+        arrowEl.textContent = arrow;
+        arrowEl.style.cssText = 'font-size:13px;color:#666;';
+        arrowEl.title = arrow === '→' ? 'This node depends on these (outgoing edges)' : 'These depend on this node (incoming edges)';
+        headerEl.appendChild(arrowEl);
+        sectionEl.appendChild(headerEl);
+
+        var groupOrder = ['import', 'call', 'type_ref', 're_export'];
+        groupOrder.forEach(function(edgeType) {
+            var groupItems = groups[edgeType];
+            if (!groupItems) return;
+
+            var subHeader = document.createElement('div');
+            subHeader.style.cssText = 'padding:3px 12px 2px;font-size:9px;color:' + (edgeColors[edgeType] || '#666') + ';text-transform:uppercase;letter-spacing:0.5px;';
+            subHeader.textContent = (EDGE_TYPE_LABELS[edgeType] || edgeType) + ' (' + groupItems.length + ')';
+            sectionEl.appendChild(subHeader);
+
+            groupItems.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+            groupItems.forEach(function(item) {
+                var row = document.createElement('div');
+                row.className = 'detail-item';
+                row.setAttribute('data-node-id', item.nodeId);
+
+                var dot = document.createElement('span');
+                dot.className = 'detail-dot';
+                dot.style.background = NODE_COLORS[item.kind] || '#555';
+                row.appendChild(dot);
+
+                var nameSpan = document.createElement('span');
+                nameSpan.textContent = item.name;
+                nameSpan.title = item.name;
+                row.appendChild(nameSpan);
+
+                row.addEventListener('mouseenter', function() {
+                    var target = nodes.find(function(n) { return n.id === item.nodeId; });
+                    if (target) {
+                        node.filter(function(n) { return n.id === item.nodeId; })
+                            .transition('panel-hover').duration(150)
+                            .attr('r', function(n) { return (n.radius || 8) * nodeSizeScale * 1.6; })
+                            .attr('stroke', '#fff').attr('stroke-width', 2);
+                    }
+                });
+
+                row.addEventListener('mouseleave', function() {
+                    node.filter(function(n) { return n.id === item.nodeId; })
+                        .transition('panel-hover').duration(200)
+                        .attr('r', function(n) { return (n.radius || 8) * nodeSizeScale; })
+                        .attr('stroke', 'none').attr('stroke-width', 0);
+                });
+
+                row.addEventListener('click', function() {
+                    var targetNode = nodes.find(function(n) { return n.id === item.nodeId; });
+                    if (targetNode) {
+                        if (!targetNode._isSymbol && !expandedFiles.has(targetNode.id)) {
+                            expandFileNode(targetNode);
+                        }
+                        activateFocus(targetNode);
+                    }
+                });
+
+                sectionEl.appendChild(row);
+            });
+        });
+
+        container.appendChild(sectionEl);
+    }
+
+    function hideDetailPanel() {
+        detailPanel.classList.remove('open');
+    }
+
+    document.getElementById('detail-close').addEventListener('click', function() {
+        clearFocus();
+    });
 
     // Exit focus on Escape or background click
     svg.on('click', function() { if (focusActive) clearFocus(); });
@@ -1281,6 +1566,15 @@ async function loadAndRender() {
                 var srcIn = si === sourceNode.id || sd !== undefined;
                 var tgtIn = ti === sourceNode.id || td !== undefined;
                 return srcIn && tgtIn ? 0.5 : 0.04;
+            })
+            .attr('marker-end', function(e) {
+                if (e._isParentEdge) return 'none';
+                var si = typeof e.source === 'object' ? e.source.id : e.source;
+                var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                var sd = depthMap.get(si), td = depthMap.get(ti);
+                var srcIn = si === sourceNode.id || sd !== undefined;
+                var tgtIn = ti === sourceNode.id || td !== undefined;
+                return srcIn && tgtIn ? 'url(#arrow-active)' : 'none';
             });
 
         var promptEl = document.getElementById('blast-radius-prompt');
@@ -1297,7 +1591,7 @@ async function loadAndRender() {
         labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
             .style('opacity', defaultLabelOpacity);
         link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-            .attr('stroke', edgeColor).attr('stroke-opacity', 0.25);
+            .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
         updateStateIndicator();
     }
 
@@ -1379,7 +1673,7 @@ async function loadAndRender() {
             if (!focusNode) return edgeMarker(e);
             var si = typeof e.source === 'object' ? e.source.id : e.source;
             var ti = typeof e.target === 'object' ? e.target.id : e.target;
-            return (si === focusNode.id || ti === focusNode.id) ? 'url(#arrow-active)' : edgeMarker(e);
+            return (si === focusNode.id || ti === focusNode.id) ? 'url(#arrow-active)' : 'none';
         })
         .style('opacity', function(e) {
             if (!isEdgeVisible(e)) return 0;
@@ -1420,6 +1714,7 @@ async function loadAndRender() {
                 filterState.symbolTypes['interface'] = this.checked;
             }
             syncPillsFromState();
+            updateSoloButtons();
             applyFilters();
         });
     });
@@ -1436,106 +1731,154 @@ async function loadAndRender() {
         document.getElementById(checkboxId).addEventListener('change', function() {
             filterState.edgeTypes[edgeKey] = this.checked;
             syncPillsFromState();
+            updateSoloButtons();
             applyFilters();
         });
     });
 
-    // Quick-Filter Pills (D-80) — bidirectional sync with panel checkboxes
-    var pillMap = {
-        'functions': { stateKey: 'function', checkboxId: 'filter-fn', type: 'symbol' },
-        'classes': { stateKey: 'class', checkboxId: 'filter-class', type: 'symbol' },
-        'imports': { stateKey: 'import', checkboxId: 'filter-edge-import', type: 'edge' },
-        'calls': { stateKey: 'call', checkboxId: 'filter-edge-call', type: 'edge' }
-    };
-
-    function syncPillsFromState() {
-        document.querySelectorAll('.pill').forEach(function(pill) {
-            var filterName = pill.getAttribute('data-filter');
-            var mapping = pillMap[filterName];
-            if (!mapping) return;
-            var isActive;
-            if (mapping.type === 'symbol') {
-                isActive = filterState.symbolTypes[mapping.stateKey];
+    // Solo buttons in filter panel
+    function updateSoloButtons() {
+        document.querySelectorAll('.solo-btn').forEach(function(btn) {
+            var parts = btn.getAttribute('data-solo').split(':');
+            var category = parts[0];
+            var key = parts[1];
+            var isSolo = false;
+            if (category === 'symbol') {
+                isSolo = filterState.symbolTypes[key] &&
+                    Object.keys(filterState.symbolTypes).every(function(k) {
+                        return k === key || (key === 'type' && k === 'interface') || !filterState.symbolTypes[k];
+                    });
             } else {
-                isActive = filterState.edgeTypes[mapping.stateKey];
+                isSolo = filterState.edgeTypes[key] &&
+                    Object.keys(filterState.edgeTypes).every(function(k) {
+                        return k === key || !filterState.edgeTypes[k];
+                    });
             }
-            pill.classList.toggle('active', isActive);
+            btn.classList.toggle('active', isSolo);
         });
     }
 
-    function countForPill(filterName) {
-        var mapping = pillMap[filterName];
-        if (!mapping) return 0;
-        if (mapping.type === 'symbol') {
-            return nodes.filter(function(n) {
-                if (!n._isSymbol) return false;
-                var k = n.kind === 'interface' ? 'type' : n.kind;
-                return k === mapping.stateKey;
-            }).length;
-        } else {
-            return edges.filter(function(e) {
-                return (e.edge_type || 'import') === mapping.stateKey;
-            }).length;
-        }
-    }
+    document.querySelectorAll('.solo-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var parts = this.getAttribute('data-solo').split(':');
+            var category = parts[0];
+            var key = parts[1];
+            var wasSolo = this.classList.contains('active');
 
-    function updatePillCounts() {
-        document.querySelectorAll('.pill').forEach(function(pill) {
-            var filterName = pill.getAttribute('data-filter');
-            var count = countForPill(filterName);
-            var label = filterName.charAt(0).toUpperCase() + filterName.slice(1);
-            pill.textContent = label + ' · ' + count;
-        });
-    }
-
-    // Initialize pills as active (all filters start checked)
-    syncPillsFromState();
-    updatePillCounts();
-
-    document.querySelectorAll('.pill').forEach(function(pill) {
-        pill.addEventListener('click', function(e) {
-            var filterName = this.getAttribute('data-filter');
-            var mapping = pillMap[filterName];
-            if (!mapping) return;
-
-            if (e.altKey) {
-                // Solo: turn off all in same category, enable only this one
-                if (mapping.type === 'symbol') {
-                    var allOn = Object.keys(filterState.symbolTypes).every(function(k) { return !filterState.symbolTypes[k] || k === mapping.stateKey || (mapping.stateKey === 'type' && k === 'interface'); });
-                    var soloAlreadyActive = !filterState.symbolTypes[mapping.stateKey] ? false : allOn;
-                    Object.keys(filterState.symbolTypes).forEach(function(k) { filterState.symbolTypes[k] = soloAlreadyActive; });
-                    if (!soloAlreadyActive) {
-                        filterState.symbolTypes[mapping.stateKey] = true;
-                        if (mapping.stateKey === 'type') filterState.symbolTypes['interface'] = true;
-                    }
-                    Object.keys(symbolFilterMap).forEach(function(id) { document.getElementById(id).checked = filterState.symbolTypes[symbolFilterMap[id]]; });
-                } else {
-                    var allEdgeOn = Object.keys(filterState.edgeTypes).every(function(k) { return !filterState.edgeTypes[k] || k === mapping.stateKey; });
-                    var edgeSoloActive = !filterState.edgeTypes[mapping.stateKey] ? false : allEdgeOn;
-                    Object.keys(filterState.edgeTypes).forEach(function(k) { filterState.edgeTypes[k] = edgeSoloActive; });
-                    if (!edgeSoloActive) filterState.edgeTypes[mapping.stateKey] = true;
-                    Object.keys(edgeFilterMap).forEach(function(id) { document.getElementById(id).checked = filterState.edgeTypes[edgeFilterMap[id]]; });
+            if (category === 'symbol') {
+                Object.keys(filterState.symbolTypes).forEach(function(k) { filterState.symbolTypes[k] = wasSolo; });
+                if (!wasSolo) {
+                    filterState.symbolTypes[key] = true;
+                    if (key === 'type') filterState.symbolTypes['interface'] = true;
                 }
+                Object.keys(symbolFilterMap).forEach(function(id) {
+                    document.getElementById(id).checked = filterState.symbolTypes[symbolFilterMap[id]];
+                });
             } else {
-                // Normal toggle
-                if (mapping.type === 'symbol') {
-                    var current = filterState.symbolTypes[mapping.stateKey];
-                    filterState.symbolTypes[mapping.stateKey] = !current;
-                    if (mapping.stateKey === 'type') {
-                        filterState.symbolTypes['interface'] = !current;
-                    }
-                    document.getElementById(mapping.checkboxId).checked = !current;
-                } else {
-                    var currentEdge = filterState.edgeTypes[mapping.stateKey];
-                    filterState.edgeTypes[mapping.stateKey] = !currentEdge;
-                    document.getElementById(mapping.checkboxId).checked = !currentEdge;
-                }
+                Object.keys(filterState.edgeTypes).forEach(function(k) { filterState.edgeTypes[k] = wasSolo; });
+                if (!wasSolo) filterState.edgeTypes[key] = true;
+                Object.keys(edgeFilterMap).forEach(function(id) {
+                    document.getElementById(id).checked = filterState.edgeTypes[edgeFilterMap[id]];
+                });
             }
-
+            updateSoloButtons();
             syncPillsFromState();
             applyFilters();
         });
     });
+
+    // Quick-Filter Pills (D-80) — dynamic, bidirectional sync with panel checkboxes
+    var allPillDefs = [
+        { stateKey: 'function', label: 'Functions', checkboxId: 'filter-fn', type: 'symbol', color: '#2dd4bf' },
+        { stateKey: 'class', label: 'Classes', checkboxId: 'filter-class', type: 'symbol', color: '#f87171' },
+        { stateKey: 'type', label: 'Types', checkboxId: 'filter-type', type: 'symbol', color: '#fbbf24' },
+        { stateKey: 'hook', label: 'Hooks', checkboxId: 'filter-hook', type: 'symbol', color: '#a78bfa' },
+        { stateKey: 'enum', label: 'Enums', checkboxId: 'filter-enum', type: 'symbol', color: '#4ade80' },
+        { stateKey: 'import', label: 'Imports', checkboxId: 'filter-edge-import', type: 'edge', color: '#4a9eff' },
+        { stateKey: 'call', label: 'Calls', checkboxId: 'filter-edge-call', type: 'edge', color: '#ff6e40' },
+        { stateKey: 'type_ref', label: 'Type refs', checkboxId: 'filter-edge-typeref', type: 'edge', color: '#b392f0' }
+    ];
+
+    var quickFiltersEl = document.getElementById('quick-filters');
+
+    function countForDef(def) {
+        if (def.type === 'symbol') {
+            return nodes.filter(function(n) {
+                if (!n._isSymbol) return false;
+                var k = n.kind === 'interface' ? 'type' : n.kind;
+                return k === def.stateKey;
+            }).length;
+        } else {
+            return edges.filter(function(e) {
+                return !e._isParentEdge && (e.edge_type || 'import') === def.stateKey;
+            }).length;
+        }
+    }
+
+    function rebuildPills() {
+        quickFiltersEl.innerHTML = '';
+        allPillDefs.forEach(function(def) {
+            var count = countForDef(def);
+            if (count === 0) return;
+
+            var pill = document.createElement('button');
+            pill.className = 'pill';
+            pill.setAttribute('data-filter', def.stateKey);
+            pill.setAttribute('data-type', def.type);
+            pill.title = 'Click to toggle · ⌥ click to solo';
+            pill.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;';
+            pill.textContent = def.label + ' · ' + count;
+
+            var isActive = def.type === 'symbol' ? filterState.symbolTypes[def.stateKey] : filterState.edgeTypes[def.stateKey];
+            if (isActive) {
+                pill.classList.add('active');
+                pill.style.borderColor = def.color;
+                pill.style.background = def.color + '22';
+                pill.style.color = def.color;
+            }
+
+            pill.addEventListener('click', function(e) {
+                if (e.altKey) {
+                    if (def.type === 'symbol') {
+                        var allOff = Object.keys(filterState.symbolTypes).every(function(k) { return !filterState.symbolTypes[k] || k === def.stateKey || (def.stateKey === 'type' && k === 'interface'); });
+                        var soloActive = filterState.symbolTypes[def.stateKey] && allOff;
+                        Object.keys(filterState.symbolTypes).forEach(function(k) { filterState.symbolTypes[k] = soloActive; });
+                        if (!soloActive) {
+                            filterState.symbolTypes[def.stateKey] = true;
+                            if (def.stateKey === 'type') filterState.symbolTypes['interface'] = true;
+                        }
+                        Object.keys(symbolFilterMap).forEach(function(id) { document.getElementById(id).checked = filterState.symbolTypes[symbolFilterMap[id]]; });
+                    } else {
+                        var allEdgeOff = Object.keys(filterState.edgeTypes).every(function(k) { return !filterState.edgeTypes[k] || k === def.stateKey; });
+                        var edgeSoloActive = filterState.edgeTypes[def.stateKey] && allEdgeOff;
+                        Object.keys(filterState.edgeTypes).forEach(function(k) { filterState.edgeTypes[k] = edgeSoloActive; });
+                        if (!edgeSoloActive) filterState.edgeTypes[def.stateKey] = true;
+                        Object.keys(edgeFilterMap).forEach(function(id) { document.getElementById(id).checked = filterState.edgeTypes[edgeFilterMap[id]]; });
+                    }
+                } else {
+                    if (def.type === 'symbol') {
+                        var cur = filterState.symbolTypes[def.stateKey];
+                        filterState.symbolTypes[def.stateKey] = !cur;
+                        if (def.stateKey === 'type') filterState.symbolTypes['interface'] = !cur;
+                        document.getElementById(def.checkboxId).checked = !cur;
+                    } else {
+                        var curEdge = filterState.edgeTypes[def.stateKey];
+                        filterState.edgeTypes[def.stateKey] = !curEdge;
+                        document.getElementById(def.checkboxId).checked = !curEdge;
+                    }
+                }
+                rebuildPills();
+                applyFilters();
+            });
+
+            quickFiltersEl.appendChild(pill);
+        });
+    }
+
+    function syncPillsFromState() { rebuildPills(); }
+    function updatePillCounts() { rebuildPills(); }
+
+    rebuildPills();
 
     // === Panel controls ===
 
