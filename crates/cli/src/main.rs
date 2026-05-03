@@ -1,11 +1,14 @@
-use anyhow::{bail, Result};
-use clap::Parser;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
+
+use anyhow::{bail, Result};
+use clap::Parser;
 use cgraph_indexer::{Indexer, dead_code, detect_cycles, DeadCodeResult, DeadCodeEntry, Confidence, CycleResult};
 use cgraph_ts_extractor::TsExtractor;
 use cgraph_core::Extractor;
+use cgraph_server::{ScanStats, AppState, file_level_projection, find_available_port};
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Code graph visualization — cgraph")]
@@ -24,9 +27,14 @@ pub struct Cli {
     /// Print detailed circular dependency report
     #[arg(long)]
     pub cycles: bool,
+
+    /// Do not auto-open browser (for headless/CI use)
+    #[arg(long)]
+    pub no_open: bool,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Validate path exists and is a directory (security: T-01-05)
@@ -85,6 +93,54 @@ fn main() -> Result<()> {
         println!();
         print_cycles_report(&cycle_result);
     }
+
+    // -- Server startup (Phase 4: INFR-02) --
+
+    // Derive project name from the scanned path (last directory component)
+    let project_name = cli.path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "cgraph".to_string());
+
+    // Build ScanStats for the API response
+    let stats = ScanStats {
+        files: code_graph.file_count(),
+        symbols: code_graph.node_count(),
+        edges: code_graph.edge_count(),
+        elapsed_ms: elapsed.as_millis() as u64,
+    };
+
+    // Pre-compute file-level projection
+    let file_graph = file_level_projection(&code_graph, stats, project_name);
+    let state = AppState {
+        file_graph: Arc::new(file_graph),
+    };
+
+    // Find available port (D-60: start at 3000, increment if taken)
+    let (port, listener) = find_available_port(3000).await;
+    let url = format!("http://localhost:{}", port);
+
+    // Spawn server using cgraph_server::serve() wrapper (encapsulates axum)
+    tokio::spawn(async move {
+        if let Err(e) = cgraph_server::serve(listener, state).await {
+            eprintln!("Server error: {}", e);
+        }
+    });
+
+    // Open browser (D-62: auto-open, --no-open suppresses)
+    if cli.no_open {
+        println!("cgraph listening on {} -- open in browser to view graph", url);
+    } else {
+        println!("cgraph listening on {} -- opening browser...", url);
+        if let Err(e) = webbrowser::open(&url) {
+            eprintln!("Could not open browser: {}. Open manually: {}", e, url);
+        }
+    }
+
+    // Block until Ctrl-C
+    println!("Press Ctrl-C to stop the server.");
+    tokio::signal::ctrl_c().await?;
+    println!("\nShutting down.");
 
     Ok(())
 }
