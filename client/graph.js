@@ -39,7 +39,6 @@ async function loadAndRender() {
         .attr('width', width)
         .attr('height', height);
 
-    // Arrowhead markers — idle and highlighted variants
     var defs = svg.append('defs');
 
     defs.append('marker')
@@ -76,17 +75,9 @@ async function loadAndRender() {
     var nodes = data.nodes.map(function(d) { return Object.assign({}, d); });
     var edges = data.edges.map(function(d) { return Object.assign({}, d); });
 
-    // Build adjacency index for hover highlight
     var adjacency = new Map();
     nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
-    edges.forEach(function(e) {
-        var srcId = typeof e.source === 'object' ? e.source.id : e.source;
-        var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
-        if (adjacency.has(srcId)) adjacency.get(srcId).add(tgtId);
-        if (adjacency.has(tgtId)) adjacency.get(tgtId).add(srcId);
-    });
 
-    // Obsidian-style force layout: high link force + moderate center/repel = dense circular cluster
     var simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(50).strength(0.9))
         .force('charge', d3.forceManyBody().strength(-60))
@@ -96,7 +87,16 @@ async function loadAndRender() {
         .force('y', d3.forceY(height / 2).strength(0.06))
         .stop();
 
+    // Pre-settle so initial render has no jitter (VIZN-07)
     simulation.tick(300);
+
+    // Build adjacency after forceLink has resolved source/target to objects
+    edges.forEach(function(e) {
+        var srcId = typeof e.source === 'object' ? e.source.id : e.source;
+        var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+        if (adjacency.has(srcId)) adjacency.get(srcId).add(tgtId);
+        if (adjacency.has(tgtId)) adjacency.get(tgtId).add(srcId);
+    });
 
     function adjustedEndpoint(source, target, targetRadius) {
         var dx = target.x - source.x;
@@ -118,58 +118,90 @@ async function loadAndRender() {
         .attr('stroke-opacity', 0.25)
         .attr('marker-end', 'url(#arrow)');
 
-    link.each(function(d) {
-        var src = typeof d.source === 'object' ? d.source : nodes.find(function(n) { return n.id === d.source; });
-        var tgt = typeof d.target === 'object' ? d.target : nodes.find(function(n) { return n.id === d.target; });
-        if (!src || !tgt) return;
-        var ep = adjustedEndpoint(src, tgt, tgt.radius);
-        d3.select(this)
-            .attr('x1', src.x).attr('y1', src.y)
-            .attr('x2', ep.x).attr('y2', ep.y);
-    });
-
-    // Nodes — idle: muted gray, like Obsidian
+    // Nodes
     var nodeGroup = g.append('g').attr('class', 'nodes');
     var node = nodeGroup.selectAll('circle')
         .data(nodes)
         .join('circle')
-        .attr('cx', function(d) { return d.x; })
-        .attr('cy', function(d) { return d.y; })
         .attr('r', function(d) { return d.radius; })
         .attr('fill', '#555')
         .attr('stroke', '#333')
         .attr('stroke-width', 1)
-        .style('cursor', 'pointer')
-        .style('transition', 'fill 0.15s, opacity 0.15s');
+        .style('cursor', 'grab');
 
     // Labels
     var labelGroup = g.append('g').attr('class', 'labels');
     var labels = labelGroup.selectAll('text')
         .data(nodes)
         .join('text')
-        .attr('x', function(d) { return d.x; })
-        .attr('y', function(d) { return d.y + d.radius + 6 + 11; })
         .attr('text-anchor', 'middle')
         .attr('fill', '#999')
         .attr('font-size', '11px')
         .attr('pointer-events', 'none')
-        .style('transition', 'opacity 0.15s')
         .text(function(d) { return d.filename; });
+
+    // Position update — used by tick handler and initial render
+    function updatePositions() {
+        node.attr('cx', function(d) { return d.x; })
+            .attr('cy', function(d) { return d.y; });
+
+        labels.attr('x', function(d) { return d.x; })
+             .attr('y', function(d) { return d.y + d.radius + 6 + 11; });
+
+        link.each(function(d) {
+            var src = typeof d.source === 'object' ? d.source : nodes.find(function(n) { return n.id === d.source; });
+            var tgt = typeof d.target === 'object' ? d.target : nodes.find(function(n) { return n.id === d.target; });
+            if (!src || !tgt) return;
+            var ep = adjustedEndpoint(src, tgt, tgt.radius);
+            d3.select(this)
+                .attr('x1', src.x).attr('y1', src.y)
+                .attr('x2', ep.x).attr('y2', ep.y);
+        });
+    }
+
+    // Initial static positions from pre-settled simulation
+    updatePositions();
+
+    // Re-enable simulation tick handler for drag interactions
+    simulation.on('tick', updatePositions);
+
+    // Drag behavior — Obsidian style: drag repositions, simulation re-settles
+    var drag = d3.drag()
+        .on('start', function(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+            d3.select(this).style('cursor', 'grabbing');
+        })
+        .on('drag', function(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        })
+        .on('end', function(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+            d3.select(this).style('cursor', 'grab');
+        });
+
+    node.call(drag);
 
     // Semantic zoom: hide labels when zoomed out far
     function updateLabelVisibility() {
+        if (hoverActive) return;
         labels.style('opacity', currentZoom < 0.4 ? 0 : Math.min(1, (currentZoom - 0.3) * 3));
     }
 
-    // Hover highlight — Obsidian style: hovered node glows purple,
-    // connected nodes light up, everything else fades
+    // Hover highlight with smooth D3 transitions
     var hoverActive = false;
+    var FADE_IN = 250;
+    var FADE_OUT = 400;
 
     node.on('mouseenter', function(event, d) {
         hoverActive = true;
         var connected = adjacency.get(d.id) || new Set();
 
-        node
+        node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('fill', function(n) {
                 if (n.id === d.id) return '#7f6df2';
                 if (connected.has(n.id)) return '#a882ff';
@@ -180,13 +212,14 @@ async function loadAndRender() {
                 return 0.12;
             });
 
-        labels.style('opacity', function(n) {
-            if (currentZoom < 0.4) return 0;
-            if (n.id === d.id || connected.has(n.id)) return 1;
-            return 0.08;
-        });
+        labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            .style('opacity', function(n) {
+                if (currentZoom < 0.4) return 0;
+                if (n.id === d.id || connected.has(n.id)) return 1;
+                return 0.06;
+            });
 
-        link
+        link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('stroke', function(e) {
                 var srcId = typeof e.source === 'object' ? e.source.id : e.source;
                 var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
@@ -197,7 +230,7 @@ async function loadAndRender() {
                 var srcId = typeof e.source === 'object' ? e.source.id : e.source;
                 var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
                 if (srcId === d.id || tgtId === d.id) return 0.7;
-                return 0.05;
+                return 0.04;
             })
             .attr('marker-end', function(e) {
                 var srcId = typeof e.source === 'object' ? e.source.id : e.source;
@@ -236,9 +269,19 @@ async function loadAndRender() {
 
     node.on('mouseleave', function() {
         hoverActive = false;
-        node.attr('fill', '#555').style('opacity', 1);
-        labels.style('opacity', currentZoom < 0.4 ? 0 : 1);
-        link.attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
+
+        node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .attr('fill', '#555')
+            .style('opacity', 1);
+
+        labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .style('opacity', currentZoom < 0.4 ? 0 : 1);
+
+        link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .attr('stroke', '#444')
+            .attr('stroke-opacity', 0.25)
+            .attr('marker-end', 'url(#arrow)');
+
         document.getElementById('tooltip').style.display = 'none';
     });
 
