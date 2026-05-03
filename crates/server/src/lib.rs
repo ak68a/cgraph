@@ -2,7 +2,7 @@ pub mod graph_api;
 pub mod static_assets;
 
 pub use graph_api::{
-    FileGraphResponse, ScanStats, AppState, create_router, file_level_projection, find_available_port,
+    EnrichedGraphResponse, ScanStats, AppState, create_router, enriched_projection, file_level_projection, find_available_port,
 };
 
 /// Start the axum server on the given listener with the provided state.
