@@ -141,8 +141,8 @@ Plans:
 **UI hint**: yes
 Plans:
 **Wave 1**
-- [ ] 05-01-PLAN.md — Rust API extension: EnrichedGraphResponse with symbol nodes, typed edges, dead code flags
-- [ ] 05-02-PLAN.md — HTML shell extension: header bar, panel sections, command palette, fit-to-screen button
+- [x] 05-01-PLAN.md — Rust API extension: EnrichedGraphResponse with symbol nodes, typed edges, dead code flags
+- [x] 05-02-PLAN.md — HTML shell extension: header bar, panel sections, command palette, fit-to-screen button
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-03-PLAN.md — Core JS: node expand/collapse (3 modes), click-to-focus, fit-to-screen
