@@ -4,6 +4,7 @@ members = [
     "crates/cli",
     "crates/ts-extractor",
     "crates/indexer",
+    "crates/server",
 ]
 resolver = "2"
 
