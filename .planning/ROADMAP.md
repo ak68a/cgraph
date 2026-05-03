@@ -115,7 +115,7 @@ Plans:
 **UI hint**: yes
 Plans:
 **Wave 1**
-- [ ] 04-01-PLAN.md — Server crate scaffold, file-level projection, axum router, static asset handler
+- [x] 04-01-PLAN.md — Server crate scaffold, file-level projection, axum router, static asset handler
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 04-02-PLAN.md — Browser client: D3 force graph, pre-settled simulation, tooltips, legend panel
