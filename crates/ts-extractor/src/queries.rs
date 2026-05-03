@@ -95,6 +95,36 @@ pub const TYPE_REF_QUERY_SRC: &str = r#"
     (type_identifier) @extends_target))
 "#;
 
+/// Type annotation query - captures type_identifier usage in annotations, generics, unions, etc.
+/// These create edges so types used in annotations are not flagged as dead code.
+pub const TYPE_ANN_QUERY_SRC: &str = r#"
+; Type annotations: param: MyType, return: MyType, const x: MyType
+(type_annotation (type_identifier) @ann_type)
+
+; Generic type name: Array<...>, Map<...>
+(generic_type name: (type_identifier) @ann_type)
+
+; Generic type arguments: Array<MyType>, Map<K, V>
+(type_arguments (type_identifier) @ann_type)
+
+; Union type members: A | B
+(union_type (type_identifier) @ann_type)
+
+; Intersection type members: A & B
+(intersection_type (type_identifier) @ann_type)
+
+; Direct type alias value: type X = Y
+(type_alias_declaration value: (type_identifier) @ann_type)
+"#;
+
+/// Member reference query — captures identifiers used as member expression objects.
+/// Handles enum value access (BadgeType.Gold), class static access, etc.
+/// Creates edges so intra-file symbol usage prevents false dead code flags.
+pub const MEMBER_REF_QUERY_SRC: &str = r#"
+(member_expression
+  object: (identifier) @ref_target)
+"#;
+
 /// Re-export query - named and star re-exports (per D-26).
 /// Named re-exports: export { foo, bar } from './module'
 /// Aliased re-exports: export { foo as bar } from './module'

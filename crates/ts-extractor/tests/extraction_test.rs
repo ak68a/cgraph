@@ -505,6 +505,138 @@ fn reexport_aliased_uses_public_name() {
         "Aliased re-export target_id should use original name 'foo'. Got: {}", edge.target_id);
 }
 
+// Type annotation edges
+
+#[test]
+fn type_annotation_param_creates_edge() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function process(user: UserConfig): void {}
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let type_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("UserConfig"))
+        .collect();
+    assert!(
+        !type_refs.is_empty(),
+        "Type annotation 'user: UserConfig' should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+}
+
+#[test]
+fn type_annotation_return_creates_edge() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function getUser(): UserProfile { return {} as any; }
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let type_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("UserProfile"))
+        .collect();
+    assert!(
+        !type_refs.is_empty(),
+        "Return type 'UserProfile' should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+}
+
+#[test]
+fn type_annotation_generic_creates_edge() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function getUsers(): Array<UserType> { return []; }
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let type_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("UserType"))
+        .collect();
+    assert!(
+        !type_refs.is_empty(),
+        "Generic argument 'UserType' in Array<UserType> should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+}
+
+#[test]
+fn type_annotation_union_creates_edges() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function handle(input: Success | Failure): void {}
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    assert!(
+        result.edges.iter().any(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("Success")),
+        "Union member 'Success' should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+    assert!(
+        result.edges.iter().any(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("Failure")),
+        "Union member 'Failure' should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+}
+
+#[test]
+fn type_annotation_intersection_creates_edges() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export type Combined = Base & Extra;
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    assert!(
+        result.edges.iter().any(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("Base")),
+        "Intersection member 'Base' should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+    assert!(
+        result.edges.iter().any(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("Extra")),
+        "Intersection member 'Extra' should create a TypeRef edge. All edges: {:?}",
+        result.edges
+    );
+}
+
+#[test]
+fn type_annotation_deduplicates_per_file() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export function a(x: MyType): MyType { return x; }
+        export function b(y: MyType): void {}
+    "#;
+    let result = extractor.extract(Path::new("test.ts"), source);
+
+    let my_type_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id == "unresolved::MyType")
+        .collect();
+    assert_eq!(
+        my_type_refs.len(), 1,
+        "Should deduplicate: one TypeRef edge per unique type name per file. Got: {:?}",
+        my_type_refs
+    );
+}
+
+#[test]
+fn type_annotation_in_services_fixture() {
+    let extractor = TsExtractor::new();
+    let source = std::fs::read_to_string("tests/fixtures/services.ts")
+        .expect("services.ts fixture missing");
+    let result = extractor.extract(Path::new("tests/fixtures/services.ts"), &source);
+
+    let user_type_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef && e.target_id.contains("UserType"))
+        .collect();
+    assert!(
+        !user_type_refs.is_empty(),
+        "UserType used in type annotations in services.ts should create TypeRef edges. All edges: {:?}",
+        result.edges.iter().filter(|e| e.kind == cgraph_core::EdgeKind::TypeRef).collect::<Vec<_>>()
+    );
+}
+
 // PARS-09 and PARS-10 are implicit -- verified by import_raw_alias_path and reexport_raw_path tests
 // Phase 2 emits raw paths; Phase 3 indexer resolves them.
 
@@ -623,4 +755,46 @@ fn partial_parse_error_reports_correct_line() {
         }
         other => panic!("Expected PartialParse error, got: {:?}", other),
     }
+}
+
+#[test]
+fn member_ref_creates_edge_for_enum_access() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export enum BadgeType { Gold, Silver, Bronze }
+        export function getBadge() { return BadgeType.Gold; }
+    "#;
+    let result = extractor.extract(Path::new("badges.ts"), source);
+
+    let ref_edges: Vec<_> = result.edges.iter()
+        .filter(|e| e.kind == cgraph_core::EdgeKind::Call && e.target_id.contains("BadgeType"))
+        .collect();
+    assert!(
+        !ref_edges.is_empty(),
+        "Should have a reference edge for BadgeType.Gold member access. All edges: {:?}",
+        result.edges
+    );
+}
+
+#[test]
+fn member_ref_deduplicates_per_file() {
+    let extractor = TsExtractor::new();
+    let source = r#"
+        export enum Status { Active, Inactive }
+        export function check() {
+            const a = Status.Active;
+            const b = Status.Inactive;
+            const c = Status.Active;
+        }
+    "#;
+    let result = extractor.extract(Path::new("status.ts"), source);
+
+    let status_refs: Vec<_> = result.edges.iter()
+        .filter(|e| e.target_id == "unresolved::Status")
+        .collect();
+    assert_eq!(
+        status_refs.len(), 1,
+        "Should deduplicate: one edge per unique name per file. Got: {:?}",
+        status_refs
+    );
 }

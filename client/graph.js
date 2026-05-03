@@ -1639,6 +1639,7 @@ async function loadAndRender() {
 
     var filterState = {
         dirQuery: '',
+        darkRoom: false,
         symbolTypes: {
             'function': true, 'class': true, 'type': true,
             'interface': true, 'hook': true, 'enum': true
@@ -1648,36 +1649,56 @@ async function loadAndRender() {
         }
     };
 
+    function symbolKindMatch(kind) {
+        var k = kind === 'interface' ? 'type' : kind;
+        return filterState.symbolTypes[k] !== false;
+    }
+
+    function hasSymbolTypeFilter() {
+        return Object.keys(filterState.symbolTypes).some(function(k) { return !filterState.symbolTypes[k]; });
+    }
+
     function isNodeVisible(d) {
-        // File nodes: visible if path matches directory filter (or no filter)
-        // Symbol nodes: visible if their kind matches symbol type filter AND their file matches dir filter
         var dirMatch = !filterState.dirQuery ||
             (d.path || d.file_path || '').toLowerCase().includes(filterState.dirQuery);
 
         if (d._isSymbol) {
-            var kindKey = d.kind; // "function", "class", etc.
-            // "interface" shares the Type filter checkbox
-            if (kindKey === 'interface') kindKey = 'type';
-            var kindMatch = filterState.symbolTypes[kindKey] !== false;
-            return dirMatch && kindMatch;
+            return dirMatch && symbolKindMatch(d.kind);
         }
 
-        return dirMatch;
+        if (!dirMatch) return false;
+
+        if (filterState.darkRoom && hasSymbolTypeFilter()) {
+            var syms = symbolsByFile[d.id] || [];
+            return syms.some(function(s) { return symbolKindMatch(s.kind); });
+        }
+
+        return true;
     }
 
     function isEdgeVisible(e) {
         var et = e.edge_type || 'import';
-        if (et === 'parent_child') return true; // Always show parent-child edges
-        if (et === 're_export') return true; // Always show re-exports
+        if (et === 'parent_child') return true;
+        if (et === 're_export') return true;
         return filterState.edgeTypes[et] !== false;
+    }
+
+    function isSoloActive() {
+        var symKeys = Object.keys(filterState.symbolTypes);
+        var edgeKeys = Object.keys(filterState.edgeTypes);
+        var symOn = symKeys.filter(function(k) { return filterState.symbolTypes[k]; }).length;
+        var edgeOn = edgeKeys.filter(function(k) { return filterState.edgeTypes[k]; }).length;
+        // Solo = exactly one symbol type on (interface mirrors type, so count as 2) or one edge type on
+        return (symOn <= 2 && symOn < symKeys.length) || (edgeOn === 1 && edgeOn < edgeKeys.length);
     }
 
     function applyFilters() {
         var focusNode = focusActive && focusedNodeId ? nodes.find(function(n) { return n.id === focusedNodeId; }) : null;
         var focusConnected = focusNode ? (adjacency.get(focusNode.id) || new Set()) : null;
+        var dr = filterState.darkRoom || hasSymbolTypeFilter();
 
         node.style('opacity', function(d) {
-            if (!isNodeVisible(d)) return 0.08;
+            if (!isNodeVisible(d)) return dr ? 0 : 0.08;
             if (focusNode) return (d.id === focusNode.id || focusConnected.has(d.id)) ? 1 : 0.1;
             return 1;
         }).style('pointer-events', function(d) {
@@ -1686,7 +1707,7 @@ async function loadAndRender() {
 
         labels.style('opacity', function(d) {
             if (!labelVisible(d) || currentZoom < 0.4) return 0;
-            if (!isNodeVisible(d)) return 0.04;
+            if (!isNodeVisible(d)) return dr ? 0 : 0.04;
             if (focusNode) return (d.id === focusNode.id || focusConnected.has(d.id)) ? 1 : 0.04;
             return 1;
         });
@@ -1720,6 +1741,26 @@ async function loadAndRender() {
         });
         updatePillCounts();
     }
+
+    // Info icon tooltips — position fixed to avoid panel overflow clipping
+    document.querySelectorAll('.info-icon').forEach(function(icon) {
+        var tip = icon.querySelector('.info-tip');
+        if (!tip) return;
+        icon.addEventListener('mouseenter', function() {
+            var r = icon.getBoundingClientRect();
+            tip.style.left = (r.right + 8) + 'px';
+            tip.style.top = (r.top + r.height / 2) + 'px';
+            tip.style.transform = 'translateY(-50%)';
+            tip.style.display = 'block';
+        });
+        icon.addEventListener('mouseleave', function() { tip.style.display = 'none'; });
+    });
+
+    // Dark room mode — hide filtered-out nodes entirely instead of fading
+    document.getElementById('toggle-dark-room').addEventListener('change', function() {
+        filterState.darkRoom = this.checked;
+        applyFilters();
+    });
 
     // Directory filter (INTR-05)
     document.getElementById('filter-dir').addEventListener('input', function() {
@@ -1917,6 +1958,8 @@ async function loadAndRender() {
         document.getElementById('search-files').value = '';
         document.getElementById('filter-dir').value = '';
         document.getElementById('toggle-orphans').checked = true;
+        document.getElementById('toggle-dark-room').checked = false;
+        filterState.darkRoom = false;
 
         // Reset symbol type filters
         Object.keys(symbolFilterMap).forEach(function(id) {

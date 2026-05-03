@@ -16,14 +16,18 @@ pub fn extract_edges(
     import_query: &Query,
     call_query: &Query,
     type_ref_query: &Query,
+    type_ann_query: &Query,
     reexport_query: &Query,
+    member_ref_query: &Query,
 ) -> Vec<SymbolEdge> {
     let mut edges = Vec::new();
 
     extract_imports(root, source, file_path, import_query, &mut edges);
     extract_calls(root, source, file_path, call_query, &mut edges);
     extract_type_refs(root, source, file_path, type_ref_query, &mut edges);
+    extract_type_annotations(root, source, file_path, type_ann_query, &mut edges);
     extract_reexports(root, source, file_path, reexport_query, &mut edges);
+    extract_member_refs(root, source, file_path, member_ref_query, &mut edges);
 
     edges
 }
@@ -168,6 +172,40 @@ fn extract_type_refs(
     }
 }
 
+/// Extract type annotation references (parameter types, return types, generics, unions, etc.).
+/// Deduplicates per file: one edge per unique type name.
+fn extract_type_annotations(
+    root: Node,
+    source: &str,
+    file_path: &str,
+    query: &Query,
+    edges: &mut Vec<SymbolEdge>,
+) {
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(query, root, source.as_bytes());
+
+    let ann_type_idx = query.capture_index_for_name("ann_type");
+
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    while let Some(m) = matches.next() {
+        for cap in m.captures {
+            if ann_type_idx.is_some_and(|idx| cap.index == idx) {
+                let name = &source[cap.node.byte_range()];
+                if seen_names.insert(name.to_string()) {
+                    let line = cap.node.start_position().row as u32 + 1;
+                    edges.push(SymbolEdge {
+                        source_id: format!("{}::<ref>", file_path),
+                        target_id: format!("unresolved::{}", name),
+                        kind: EdgeKind::TypeRef,
+                        source_location: line,
+                    });
+                }
+            }
+        }
+    }
+}
+
 /// Extract re-export edges: named re-exports and star re-exports.
 /// Named: source_id = "file_path::specifier_name", target_id = "raw_path::specifier_name"
 /// Star: source_id = "file_path::*", target_id = "raw_path::*"
@@ -306,6 +344,42 @@ fn extract_reexports(
                 }
             }
             // else: has_export_clause — named re-export already handled by Pattern 0; skip
+        }
+    }
+}
+
+/// Extract member expression object references (e.g., `EnumName.Value`).
+/// Captures identifiers used as member expression objects, creating edges so
+/// intra-file symbol usage (enums, class statics) prevents false dead code flags.
+/// Deduplicates per file: one edge per unique identifier name.
+fn extract_member_refs(
+    root: Node,
+    source: &str,
+    file_path: &str,
+    query: &Query,
+    edges: &mut Vec<SymbolEdge>,
+) {
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(query, root, source.as_bytes());
+
+    let target_idx = query.capture_index_for_name("ref_target");
+
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    while let Some(m) = matches.next() {
+        for cap in m.captures {
+            if target_idx.is_some_and(|idx| cap.index == idx) {
+                let name = &source[cap.node.byte_range()];
+                if seen_names.insert(name.to_string()) {
+                    let line = cap.node.start_position().row as u32 + 1;
+                    edges.push(SymbolEdge {
+                        source_id: format!("{}::<ref>", file_path),
+                        target_id: format!("unresolved::{}", name),
+                        kind: EdgeKind::Call,
+                        source_location: line,
+                    });
+                }
+            }
         }
     }
 }

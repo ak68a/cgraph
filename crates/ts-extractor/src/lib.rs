@@ -18,7 +18,9 @@ pub struct TsExtractor {
     import_query: Query,
     call_query: Query,
     type_ref_query: Query,
+    type_ann_query: Query,
     reexport_query: Query,
+    member_ref_query: Query,
 }
 
 impl TsExtractor {
@@ -35,8 +37,12 @@ impl TsExtractor {
             .expect("call query compilation failed");
         let type_ref_query = Query::new(&tsx_lang, queries::TYPE_REF_QUERY_SRC)
             .expect("type_ref query compilation failed");
+        let type_ann_query = Query::new(&tsx_lang, queries::TYPE_ANN_QUERY_SRC)
+            .expect("type_ann query compilation failed");
         let reexport_query = Query::new(&tsx_lang, queries::REEXPORT_QUERY_SRC)
             .expect("reexport query compilation failed");
+        let member_ref_query = Query::new(&tsx_lang, queries::MEMBER_REF_QUERY_SRC)
+            .expect("member_ref query compilation failed");
 
         Self {
             tsx_lang,
@@ -44,7 +50,9 @@ impl TsExtractor {
             import_query,
             call_query,
             type_ref_query,
+            type_ann_query,
             reexport_query,
+            member_ref_query,
         }
     }
 }
@@ -123,7 +131,9 @@ impl Extractor for TsExtractor {
             &self.import_query,
             &self.call_query,
             &self.type_ref_query,
+            &self.type_ann_query,
             &self.reexport_query,
+            &self.member_ref_query,
         );
 
         ExtractionResult { nodes, edges, errors }
