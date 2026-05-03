@@ -118,8 +118,8 @@ Plans:
 - [x] 04-01-PLAN.md — Server crate scaffold, file-level projection, axum router, static asset handler
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 04-02-PLAN.md — Browser client: D3 force graph, pre-settled simulation, tooltips, legend panel
-- [ ] 04-03-PLAN.md — CLI wiring: async main, server startup, browser auto-open, --no-open flag
+- [x] 04-02-PLAN.md — Browser client: D3 force graph, pre-settled simulation, tooltips, legend panel
+- [x] 04-03-PLAN.md — CLI wiring: async main, server startup, browser auto-open, --no-open flag
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 04-04-PLAN.md — Integration checks + visual verification checkpoint
@@ -223,7 +223,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 | 1. Foundation | 3/3 | Complete | - |
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
 | 3. Indexer & Analysis Pipeline | 6/6 | Complete | 2026-05-02 |
-| 4. HTTP Server & Browser Shell | 0/4 | Planning complete | - |
+| 4. HTTP Server & Browser Shell | 3/4 | In Progress | - |
 | 5. Graph Interaction | 0/TBD | Not started | - |
 | 6. Watch Mode | 0/TBD | Not started | - |
 | 7. Swift Extractor | 0/TBD | Not started | - |
