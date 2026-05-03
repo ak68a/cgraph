@@ -14,18 +14,14 @@
     }
     #header {
       height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between;
       padding: 0 16px;
-      background: #1a1a1a;
-      border-bottom: 1px solid #2a2a2a;
+      background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
     }
     #project-name { color: #dcddde; font-size: 13px; font-weight: 500; }
     #stats { color: #666; font-size: 13px; }
     #graph { width: 100vw; height: calc(100vh - 40px); }
 
-    /* Tooltip */
     #tooltip {
       position: fixed; display: none;
       background: #2a2a2a; border: 1px solid #3a3a3a;
@@ -36,10 +32,10 @@
     .tooltip-exports { color: #999; font-size: 11px; margin-bottom: 2px; }
     .tooltip-edges { color: #666; font-size: 11px; }
 
-    /* Settings panel */
+    /* Panel */
     #panel {
       position: fixed; top: 52px; right: 12px;
-      width: 240px; max-height: calc(100vh - 64px);
+      width: 244px; max-height: calc(100vh - 64px);
       background: #2a2a2a; border: 1px solid #3a3a3a;
       border-radius: 12px; z-index: 998;
       overflow-y: auto; overflow-x: hidden;
@@ -59,30 +55,39 @@
     #panel-toggle.open { background: #3a3a3a; color: #ddd; }
     #panel-toggle:hover { background: #444; color: #ddd; }
 
-    .panel-section {
-      border-bottom: 1px solid #333;
-    }
+    .panel-section { border-bottom: 1px solid #333; }
+    .panel-section:last-child { border-bottom: none; }
     .section-header {
-      padding: 10px 14px;
-      color: #dcddde; font-size: 12px; font-weight: 600;
+      padding: 8px 12px;
+      color: #dcddde; font-size: 12px; font-weight: 500;
       cursor: pointer; user-select: none;
-      display: flex; align-items: center;
-      justify-content: space-between;
+      display: flex; align-items: center; gap: 6px;
     }
-    .section-header:hover { background: #2e2e2e; }
-    .section-arrow { color: #666; font-size: 10px; transition: transform 0.15s; }
-    .section-arrow.open { transform: rotate(90deg); }
-    .section-body { padding: 6px 14px 12px; display: none; }
+    .section-header:hover { background: #303030; }
+    .section-header .chevron {
+      width: 16px; height: 16px; flex-shrink: 0;
+      color: #666; transition: transform 0.15s;
+    }
+    .section-header .chevron.open { transform: rotate(90deg); }
+    .section-header .section-title { flex: 1; }
+    .section-header .section-actions { display: flex; gap: 4px; }
+    .section-header .section-actions button {
+      background: none; border: none; color: #666;
+      cursor: pointer; padding: 2px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .section-header .section-actions button:hover { color: #ddd; background: #3a3a3a; }
+    .section-body { padding: 4px 12px 10px; display: none; }
     .section-body.open { display: block; }
 
     .ctrl-row {
       display: flex; align-items: center;
       justify-content: space-between;
-      margin-bottom: 10px;
+      height: 28px;
     }
     .ctrl-label { color: #999; font-size: 11px; }
     .ctrl-row input[type="range"] {
-      width: 100px; height: 4px;
+      width: 96px; height: 4px;
       -webkit-appearance: none; appearance: none;
       background: #444; border-radius: 2px; outline: none;
     }
@@ -91,18 +96,16 @@
       width: 14px; height: 14px;
       background: #ddd; border-radius: 50%; cursor: pointer;
     }
-    .toggle-switch {
-      position: relative; width: 36px; height: 20px;
-    }
+    .toggle-switch { position: relative; width: 34px; height: 18px; flex-shrink: 0; }
     .toggle-switch input { opacity: 0; width: 0; height: 0; }
     .toggle-track {
       position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: #444; border-radius: 10px; cursor: pointer;
+      background: #444; border-radius: 9px; cursor: pointer;
       transition: background 0.2s;
     }
     .toggle-track::after {
       content: ""; position: absolute;
-      width: 16px; height: 16px;
+      width: 14px; height: 14px;
       left: 2px; top: 2px;
       background: #ddd; border-radius: 50%;
       transition: transform 0.2s;
@@ -110,21 +113,26 @@
     .toggle-switch input:checked + .toggle-track { background: #7f6df2; }
     .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
 
-    .search-input {
-      width: 100%; padding: 6px 8px;
-      background: #333; border: 1px solid #444;
-      border-radius: 4px; color: #ddd;
-      font-size: 11px; outline: none;
-      margin-bottom: 8px;
+    .search-wrap {
+      position: relative; margin-bottom: 6px;
     }
-    .search-input::placeholder { color: #666; }
+    .search-wrap .search-icon {
+      position: absolute; left: 8px; top: 50%;
+      transform: translateY(-50%);
+      color: #666; pointer-events: none;
+    }
+    .search-input {
+      width: 100%; padding: 5px 8px 5px 28px;
+      background: #333; border: 1px solid #444;
+      border-radius: 6px; color: #ddd;
+      font-size: 11px; outline: none;
+    }
+    .search-input::placeholder { color: #555; }
     .search-input:focus { border-color: #7f6df2; }
 
-    /* Empty/error states */
     #empty-state, #error-state {
       display: none; position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
       text-align: center;
     }
     #empty-state h2, #error-state h2 { color: #dcddde; font-size: 18px; margin-bottom: 8px; }
@@ -143,15 +151,24 @@
     <div class="tooltip-edges"></div>
   </div>
 
-  <button id="panel-toggle" class="open" title="Toggle settings">&#9881;</button>
+  <button id="panel-toggle" class="open" title="Toggle settings" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+  </button>
   <div id="panel">
 
     <div class="panel-section">
       <div class="section-header" data-section="filters">
-        <span>Filters</span><span class="section-arrow open">&#9654;</span>
+        <svg class="chevron open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="section-title">Filters</span>
+        <span class="section-actions">
+          <button id="btn-reset-filters" title="Reset filters"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+        </span>
       </div>
       <div class="section-body open" id="sec-filters">
-        <input type="text" class="search-input" id="search-files" placeholder="Search files...">
+        <div class="search-wrap">
+          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="search-input" id="search-files" placeholder="Search files...">
+        </div>
         <div class="ctrl-row">
           <span class="ctrl-label">Orphans</span>
           <label class="toggle-switch"><input type="checkbox" id="toggle-orphans" checked><span class="toggle-track"></span></label>
@@ -161,7 +178,8 @@
 
     <div class="panel-section">
       <div class="section-header" data-section="display">
-        <span>Display</span><span class="section-arrow">&#9654;</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="section-title">Display</span>
       </div>
       <div class="section-body" id="sec-display">
         <div class="ctrl-row">
@@ -189,7 +207,8 @@
 
     <div class="panel-section">
       <div class="section-header" data-section="forces">
-        <span>Forces</span><span class="section-arrow">&#9654;</span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="section-title">Forces</span>
       </div>
       <div class="section-body" id="sec-forces">
         <div class="ctrl-row">

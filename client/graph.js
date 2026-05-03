@@ -11,10 +11,11 @@ function initPanel() {
         toggle.classList.toggle('open');
     });
     document.querySelectorAll('.section-header').forEach(function(hdr) {
-        hdr.addEventListener('click', function() {
-            var arrow = hdr.querySelector('.section-arrow');
+        hdr.addEventListener('click', function(e) {
+            if (e.target.closest('.section-actions')) return;
+            var arrow = hdr.querySelector('.chevron');
             var body = hdr.nextElementSibling;
-            arrow.classList.toggle('open');
+            if (arrow) arrow.classList.toggle('open');
             body.classList.toggle('open');
         });
     });
@@ -233,6 +234,14 @@ async function loadAndRender() {
     });
 
     // === Panel controls ===
+
+    // Filters: reset
+    document.getElementById('btn-reset-filters').addEventListener('click', function() {
+        document.getElementById('search-files').value = '';
+        document.getElementById('toggle-orphans').checked = true;
+        node.style('display', null).style('opacity', 1);
+        labels.style('display', null).style('opacity', currentZoom < 0.4 ? 0 : 1);
+    });
 
     // Filters: search
     document.getElementById('search-files').addEventListener('input', function(e) {
