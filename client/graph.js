@@ -66,17 +66,58 @@ async function loadAndRender() {
     var g = svg.append('g');
     var currentZoom = 1;
 
-    svg.call(d3.zoom().scaleExtent([0.1, 10]).on('zoom', function(event) {
+    // Focus state (declared before zoomBehavior since zoom callback references focusActive)
+    var focusActive = false;
+    var focusedNodeId = null;
+
+    var zoomBehavior = d3.zoom().scaleExtent([0.1, 10]).on('zoom', function(event) {
         g.attr('transform', event.transform);
         currentZoom = event.transform.k;
-        if (!hoverActive) updateLabelVisibility();
-    }));
+        if (!hoverActive && !focusActive) updateLabelVisibility();
+    });
+    svg.call(zoomBehavior);
 
     var nodes = data.nodes.map(function(d) { return Object.assign({}, d); });
-    var edges = data.edges.map(function(d) { return Object.assign({}, d); });
+
+    // Separate file-level and symbol-level edges
+    var allEdgeData = data.edges.map(function(d) { return Object.assign({}, d); });
+    var edges = allEdgeData.filter(function(e) { return e.source.indexOf('::') === -1 && e.target.indexOf('::') === -1; });
+    var symbolEdges = data.edges.filter(function(e) { return e.source.indexOf('::') !== -1 || e.target.indexOf('::') !== -1; }).map(function(d) { return Object.assign({}, d); });
+
+    // Store all symbols grouped by file for expand
+    var symbolsByFile = {};
+    (data.symbols || []).forEach(function(s) {
+        if (!symbolsByFile[s.file_path]) symbolsByFile[s.file_path] = [];
+        symbolsByFile[s.file_path].push(Object.assign({}, s));
+    });
+
+    // Symbol adjacency map (precomputed from symbol edges)
+    var symbolAdjacency = new Map();
+    symbolEdges.forEach(function(e) {
+        var src = typeof e.source === 'object' ? e.source.id : e.source;
+        var tgt = typeof e.target === 'object' ? e.target.id : e.target;
+        if (!symbolAdjacency.has(src)) symbolAdjacency.set(src, new Set());
+        if (!symbolAdjacency.has(tgt)) symbolAdjacency.set(tgt, new Set());
+        symbolAdjacency.get(src).add(tgt);
+        symbolAdjacency.get(tgt).add(src);
+    });
 
     var adjacency = new Map();
     nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
+
+    // Node color palette (D-72)
+    var NODE_COLORS = {
+        'function': '#2dd4bf', 'class': '#f87171', 'type': '#fbbf24',
+        'interface': '#fbbf24', 'hook': '#a78bfa', 'enum': '#4ade80',
+        'module': '#555', 'file': '#555'
+    };
+    function nodeColor(d) {
+        if (d._isSymbol) return NODE_COLORS[d.kind] || '#555';
+        return '#555';
+    }
+
+    var expandMode = 'orbital';
+    var expandedFiles = new Set(); // Set of file node IDs currently expanded
 
     var simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(50).strength(0.9))
@@ -112,9 +153,12 @@ async function loadAndRender() {
         .attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
 
     var nodeGroup = g.append('g').attr('class', 'nodes');
-    var node = nodeGroup.selectAll('circle').data(nodes).join('circle')
+    var node = nodeGroup.selectAll('circle')
+        .data(nodes, function(d) { return d.id; })
+        .join('circle')
         .attr('r', function(d) { return d.radius; })
-        .attr('fill', '#555').attr('stroke', 'none').style('cursor', 'grab');
+        .attr('fill', function(d) { return nodeColor(d); })
+        .attr('stroke', 'none').style('cursor', 'grab');
 
     var labelGroup = g.append('g').attr('class', 'labels');
     var labels = labelGroup.selectAll('text').data(nodes).join('text')
@@ -149,7 +193,10 @@ async function loadAndRender() {
         .on('drag', function(event, d) { d.fx = event.x; d.fy = event.y; })
         .on('end', function(event, d) {
             if (!event.active) simulation.alphaTarget(0);
-            d.fx = null; d.fy = null;
+            // Keep stacked nodes fixed
+            if (!(d._isSymbol && expandMode === 'stacked')) {
+                d.fx = null; d.fy = null;
+            }
             d3.select(this).style('cursor', 'grab');
         });
     node.call(drag);
@@ -159,29 +206,344 @@ async function loadAndRender() {
         labels.style('opacity', !showLabels ? 0 : currentZoom < 0.4 ? 0 : Math.min(1, (currentZoom - 0.3) * 3));
     }
 
-    // Hover highlight
+    // === NodeExpander (D-70, D-71, D-72) ===
+
+    function expandFileNode(fileNode) {
+        var fileId = fileNode.id;
+        if (expandedFiles.has(fileId)) return;
+        expandedFiles.add(fileId);
+
+        var syms = symbolsByFile[fileId] || [];
+        if (syms.length === 0) return;
+
+        var symbolNodes = syms.map(function(s) {
+            var sn = {
+                id: s.id,
+                name: s.name,
+                kind: s.kind,
+                file_path: s.file_path,
+                radius: 6,
+                _isSymbol: true,
+                _parentId: fileId,
+                is_dead_code: s.is_dead_code,
+                dead_code_confidence: s.dead_code_confidence
+            };
+            return sn;
+        });
+
+        // Position symbols based on current expand mode
+        positionSymbols(fileNode, symbolNodes);
+
+        // Add symbol nodes to the shared nodes array
+        symbolNodes.forEach(function(sn) { nodes.push(sn); });
+
+        // Add parent-child edges (file -> symbol)
+        var parentEdges = symbolNodes.map(function(sn) {
+            return { source: fileId, target: sn.id, edge_type: 'parent_child', _isParentEdge: true };
+        });
+        parentEdges.forEach(function(e) { edges.push(e); });
+
+        // Add symbol-level edges between expanded symbols
+        symbolEdges.forEach(function(se) {
+            var src = typeof se.source === 'object' ? se.source.id : se.source;
+            var tgt = typeof se.target === 'object' ? se.target.id : se.target;
+            var srcExpanded = nodes.some(function(n) { return n.id === src; });
+            var tgtExpanded = nodes.some(function(n) { return n.id === tgt; });
+            if (srcExpanded && tgtExpanded) {
+                // Check if already in edges
+                var exists = edges.some(function(e) {
+                    var es = typeof e.source === 'object' ? e.source.id : e.source;
+                    var et = typeof e.target === 'object' ? e.target.id : e.target;
+                    return es === src && et === tgt;
+                });
+                if (!exists) {
+                    edges.push({ source: src, target: tgt, edge_type: se.edge_type });
+                }
+            }
+        });
+
+        // Update adjacency map with symbol connections
+        symbolNodes.forEach(function(sn) {
+            if (!adjacency.has(sn.id)) adjacency.set(sn.id, new Set());
+            adjacency.get(sn.id).add(fileId);
+            if (adjacency.has(fileId)) adjacency.get(fileId).add(sn.id);
+            // Merge symbol adjacency
+            var symNeighbors = symbolAdjacency.get(sn.id);
+            if (symNeighbors) {
+                symNeighbors.forEach(function(nid) {
+                    if (nodes.some(function(n) { return n.id === nid; })) {
+                        adjacency.get(sn.id).add(nid);
+                        if (!adjacency.has(nid)) adjacency.set(nid, new Set());
+                        adjacency.get(nid).add(sn.id);
+                    }
+                });
+            }
+        });
+
+        rebuildSimulation();
+    }
+
+    function collapseFileNode(fileId) {
+        if (!expandedFiles.has(fileId)) return;
+        expandedFiles.delete(fileId);
+
+        // Remove symbol nodes
+        var removedIds = new Set();
+        nodes = nodes.filter(function(n) {
+            if (n._parentId === fileId) { removedIds.add(n.id); return false; }
+            return true;
+        });
+
+        // Remove edges referencing removed nodes
+        edges = edges.filter(function(e) {
+            var src = typeof e.source === 'object' ? e.source.id : e.source;
+            var tgt = typeof e.target === 'object' ? e.target.id : e.target;
+            return !removedIds.has(src) && !removedIds.has(tgt);
+        });
+
+        // Clean adjacency
+        removedIds.forEach(function(rid) {
+            adjacency.delete(rid);
+            adjacency.forEach(function(neighbors) { neighbors.delete(rid); });
+        });
+
+        rebuildSimulation();
+    }
+
+    function positionSymbols(fileNode, symbolNodes) {
+        var mode = expandMode;
+        var count = symbolNodes.length;
+
+        if (mode === 'orbital') {
+            var orbitalRadius = 40;
+            symbolNodes.forEach(function(sn, i) {
+                var angle = (2 * Math.PI * i) / count - Math.PI / 2;
+                sn.x = fileNode.x + orbitalRadius * Math.cos(angle);
+                sn.y = fileNode.y + orbitalRadius * Math.sin(angle);
+                // No fx/fy -- let simulation settle
+            });
+        } else if (mode === 'stacked') {
+            var spacing = 18;
+            var startY = fileNode.y + fileNode.radius + 12;
+            symbolNodes.forEach(function(sn, i) {
+                sn.x = fileNode.x;
+                sn.y = startY + i * spacing;
+                sn.fx = fileNode.x; // fixed position for stacked mode
+                sn.fy = startY + i * spacing;
+            });
+        } else { // force-integrated
+            // Start near parent, let simulation position them
+            symbolNodes.forEach(function(sn) {
+                sn.x = fileNode.x + (Math.random() - 0.5) * 30;
+                sn.y = fileNode.y + (Math.random() - 0.5) * 30;
+            });
+        }
+    }
+
+    function rebuildSimulation() {
+        simulation.nodes(nodes);
+        simulation.force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(function(d) {
+            return d._isParentEdge ? 25 : 50;
+        }).strength(0.9));
+
+        // Rejoin node circles with stable keys
+        node = nodeGroup.selectAll('circle')
+            .data(nodes, function(d) { return d.id; })
+            .join(
+                function(enter) {
+                    return enter.append('circle')
+                        .attr('r', 0)
+                        .attr('fill', function(d) { return nodeColor(d); })
+                        .attr('stroke', 'none')
+                        .style('cursor', 'grab')
+                        .call(drag)
+                        .transition().duration(300).attr('r', function(d) { return d.radius * nodeSizeScale; });
+                },
+                function(update) { return update; },
+                function(exit) {
+                    return exit.transition().duration(200).attr('r', 0).remove();
+                }
+            );
+
+        // Rewire hover and click on the new selection
+        wireNodeEvents(node);
+
+        // Rejoin labels with stable keys
+        labels = labelGroup.selectAll('text')
+            .data(nodes, function(d) { return d.id; })
+            .join(
+                function(enter) {
+                    return enter.append('text')
+                        .attr('text-anchor', 'middle').attr('fill', '#999')
+                        .attr('font-size', function(d) { return d._isSymbol ? '10px' : '11px'; })
+                        .attr('pointer-events', 'none')
+                        .text(function(d) { return d._isSymbol ? d.name : d.filename; })
+                        .style('opacity', 0).transition().duration(300).style('opacity', 1);
+                },
+                function(update) { return update; },
+                function(exit) { return exit.transition().duration(200).style('opacity', 0).remove(); }
+            );
+
+        // Rejoin links with stable keys
+        link = linkGroup.selectAll('line')
+            .data(edges, function(d) {
+                var s = typeof d.source === 'object' ? d.source.id : d.source;
+                var t = typeof d.target === 'object' ? d.target.id : d.target;
+                return s + '->' + t;
+            })
+            .join(
+                function(enter) {
+                    return enter.append('line')
+                        .attr('stroke', '#444')
+                        .attr('stroke-opacity', function(d) { return d._isParentEdge ? 0.15 : 0.25; })
+                        .attr('stroke-dasharray', function(d) { return d._isParentEdge ? '2 2' : null; })
+                        .attr('marker-end', function(d) { return d._isParentEdge ? 'none' : 'url(#arrow)'; });
+                },
+                function(update) { return update; },
+                function(exit) { return exit.remove(); }
+            );
+
+        simulation.alpha(0.3).restart();
+    }
+
+    // Expand mode change handler
+    document.getElementById('expand-mode').addEventListener('change', function() {
+        expandMode = this.value;
+        // Re-expand currently expanded nodes in new mode
+        var expanded = Array.from(expandedFiles);
+        expanded.forEach(function(fileId) { collapseFileNode(fileId); });
+        expanded.forEach(function(fileId) {
+            var fileNode = nodes.find(function(n) { return n.id === fileId; });
+            if (fileNode) expandFileNode(fileNode);
+        });
+    });
+
+    // === FocusMode (D-74) ===
+
+    function wireNodeEvents(sel) {
+        sel.on('mouseenter', function(event, d) {
+            if (focusActive) return;
+            hoverActive = true;
+            var connected = adjacency.get(d.id) || new Set();
+            node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+                .attr('fill', function(n) {
+                    if (n.id === d.id) return '#7f6df2';
+                    if (connected.has(n.id)) return '#a882ff';
+                    return nodeColor(n);
+                })
+                .style('opacity', function(n) {
+                    return (n.id === d.id || connected.has(n.id)) ? 1 : 0.12;
+                });
+            var showLabels = document.getElementById('toggle-labels').checked;
+            labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+                .style('opacity', function(n) {
+                    if (!showLabels || currentZoom < 0.4) return 0;
+                    return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
+                });
+            link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+                .attr('stroke', function(e) {
+                    var si = typeof e.source === 'object' ? e.source.id : e.source;
+                    var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                    return (si === d.id || ti === d.id) ? '#a882ff' : '#444';
+                })
+                .attr('stroke-opacity', function(e) {
+                    var si = typeof e.source === 'object' ? e.source.id : e.source;
+                    var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                    return (si === d.id || ti === d.id) ? 0.7 : 0.04;
+                })
+                .attr('marker-end', function(e) {
+                    var si = typeof e.source === 'object' ? e.source.id : e.source;
+                    var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                    return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'url(#arrow)';
+                });
+
+            // Tooltip
+            var counts = d.export_counts || {};
+            if (d._isSymbol) {
+                var tooltip = document.getElementById('tooltip');
+                tooltip.querySelector('.tooltip-path').textContent = d.file_path;
+                tooltip.querySelector('.tooltip-exports').textContent = d.kind;
+                tooltip.querySelector('.tooltip-edges').textContent = d.name;
+                tooltip.style.display = 'block';
+                tooltip.style.left = (event.pageX + 12) + 'px';
+                tooltip.style.top = event.pageY + 'px';
+            } else {
+                var kinds = [['functions', counts.functions || 0], ['classes', counts.classes || 0],
+                    ['types', counts.types || 0], ['interfaces', counts.interfaces || 0],
+                    ['hooks', counts.hooks || 0], ['enums', counts.enums || 0]];
+                var parts = kinds.filter(function(k) { return k[1] > 0; }).map(function(k) { return k[1] + ' ' + k[0]; });
+                var tooltip = document.getElementById('tooltip');
+                tooltip.querySelector('.tooltip-path').textContent = d.path || d.file_path;
+                tooltip.querySelector('.tooltip-exports').textContent = parts.length > 0 ? parts.join(', ') : 'no exports';
+                tooltip.querySelector('.tooltip-edges').textContent = (d.incoming || 0) + ' incoming + ' + (d.outgoing || 0) + ' outgoing';
+                tooltip.style.display = 'block';
+                tooltip.style.left = (event.pageX + 12) + 'px';
+                tooltip.style.top = event.pageY + 'px';
+            }
+        });
+
+        sel.on('mousemove', function(event) {
+            var t = document.getElementById('tooltip');
+            t.style.left = (event.pageX + 12) + 'px'; t.style.top = event.pageY + 'px';
+        });
+
+        sel.on('mouseleave', function() {
+            if (focusActive) return;
+            hoverActive = false;
+            node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+                .attr('fill', function(n) { return nodeColor(n); })
+                .style('opacity', 1);
+            labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+                .style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+            link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+                .attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
+            document.getElementById('tooltip').style.display = 'none';
+        });
+
+        sel.on('click', function(event, d) {
+            event.stopPropagation();
+
+            // If file node: toggle expand/collapse
+            if (!d._isSymbol) {
+                if (expandedFiles.has(d.id)) {
+                    collapseFileNode(d.id);
+                } else {
+                    expandFileNode(d);
+                }
+            }
+
+            // Activate focus mode
+            activateFocus(d);
+        });
+    }
+
+    // Wire the initial node selection
+    wireNodeEvents(node);
+
+    // Hover highlight state variables
     var hoverActive = false;
     var FADE_IN = 250, FADE_OUT = 400;
 
-    node.on('mouseenter', function(event, d) {
-        hoverActive = true;
+    function activateFocus(d) {
+        focusActive = true;
+        focusedNodeId = d.id;
         var connected = adjacency.get(d.id) || new Set();
 
         node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('fill', function(n) {
                 if (n.id === d.id) return '#7f6df2';
-                if (connected.has(n.id)) return '#a882ff';
-                return '#555';
+                if (connected.has(n.id)) return nodeColor(n);
+                return nodeColor(n);
             })
             .style('opacity', function(n) {
-                return (n.id === d.id || connected.has(n.id)) ? 1 : 0.12;
+                return (n.id === d.id || connected.has(n.id)) ? 1 : 0.1;
             });
 
         var showLabels = document.getElementById('toggle-labels').checked;
         labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .style('opacity', function(n) {
                 if (!showLabels || currentZoom < 0.4) return 0;
-                return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
+                return (n.id === d.id || connected.has(n.id)) ? 1 : 0.04;
             });
 
         link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
@@ -201,34 +563,60 @@ async function loadAndRender() {
                 return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'url(#arrow)';
             });
 
-        var counts = d.export_counts;
-        var kinds = [['functions', counts.functions], ['classes', counts.classes],
-            ['types', counts.types], ['interfaces', counts.interfaces],
-            ['hooks', counts.hooks], ['enums', counts.enums]];
-        var parts = kinds.filter(function(k) { return k[1] > 0; }).map(function(k) { return k[1] + ' ' + k[0]; });
+        document.getElementById('focus-hint').style.display = 'block';
+    }
 
-        var tooltip = document.getElementById('tooltip');
-        tooltip.querySelector('.tooltip-path').textContent = d.path;
-        tooltip.querySelector('.tooltip-exports').textContent = parts.length > 0 ? parts.join(', ') : 'no exports';
-        tooltip.querySelector('.tooltip-edges').textContent = d.incoming + ' incoming • ' + d.outgoing + ' outgoing';
-        tooltip.style.display = 'block';
-        tooltip.style.left = (event.pageX + 12) + 'px';
-        tooltip.style.top = event.pageY + 'px';
-    });
-
-    node.on('mousemove', function(event) {
-        var t = document.getElementById('tooltip');
-        t.style.left = (event.pageX + 12) + 'px'; t.style.top = event.pageY + 'px';
-    });
-
-    node.on('mouseleave', function() {
-        hoverActive = false;
-        node.transition().duration(FADE_OUT).ease(d3.easeCubicIn).attr('fill', '#555').style('opacity', 1);
+    function clearFocus() {
+        focusActive = false;
+        focusedNodeId = null;
+        node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .attr('fill', function(n) { return nodeColor(n); })
+            .style('opacity', 1);
         labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
             .style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
         link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
             .attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
-        document.getElementById('tooltip').style.display = 'none';
+        document.getElementById('focus-hint').style.display = 'none';
+    }
+
+    // Exit focus on Escape or background click
+    svg.on('click', function() { if (focusActive) clearFocus(); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && focusActive) clearFocus();
+    });
+
+    // === Fit-to-Screen (VIZN-04) ===
+    function fitToScreen() {
+        var visibleNodes = nodes.filter(function(d) { return d.x !== undefined; });
+        if (visibleNodes.length === 0) return;
+        var minX = d3.min(visibleNodes, function(d) { return d.x - (d.radius || 6); });
+        var maxX = d3.max(visibleNodes, function(d) { return d.x + (d.radius || 6); });
+        var minY = d3.min(visibleNodes, function(d) { return d.y - (d.radius || 6); });
+        var maxY = d3.max(visibleNodes, function(d) { return d.y + (d.radius || 6); });
+        var padding = 48;
+        var svgW = +svg.attr('width');
+        var svgH = +svg.attr('height');
+        var scale = Math.min(
+            (svgW - padding * 2) / (maxX - minX),
+            (svgH - padding * 2) / (maxY - minY),
+            1
+        );
+        var tx = svgW / 2 - scale * (minX + maxX) / 2;
+        var ty = svgH / 2 - scale * (minY + maxY) / 2;
+        svg.transition().duration(500).ease(d3.easeCubicInOut)
+            .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    }
+
+    document.getElementById('btn-fit').addEventListener('click', fitToScreen);
+
+    // F key shortcut (when no input focused)
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'f' || e.key === 'F') {
+            var tag = document.activeElement.tagName;
+            if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+                fitToScreen();
+            }
+        }
     });
 
     // === Panel controls ===
@@ -244,8 +632,8 @@ async function loadAndRender() {
     // Filters: search
     document.getElementById('search-files').addEventListener('input', function(e) {
         var q = e.target.value.toLowerCase();
-        node.style('opacity', function(d) { return !q || d.path.toLowerCase().includes(q) ? 1 : 0.1; });
-        labels.style('opacity', function(d) { return !q || d.path.toLowerCase().includes(q) ? 1 : 0.05; });
+        node.style('opacity', function(d) { return !q || (d.path || d.file_path || '').toLowerCase().includes(q) ? 1 : 0.1; });
+        labels.style('opacity', function(d) { return !q || (d.path || d.file_path || '').toLowerCase().includes(q) ? 1 : 0.05; });
     });
 
     // Filters: orphans
