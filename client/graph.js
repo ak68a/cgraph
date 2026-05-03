@@ -1242,14 +1242,191 @@ async function loadAndRender() {
         }
     });
 
+    // === Filter System (INTR-05, INTR-06, INTR-07, D-79, D-80) ===
+
+    var filterState = {
+        dirQuery: '',
+        symbolTypes: {
+            'function': true, 'class': true, 'type': true,
+            'interface': true, 'hook': true, 'enum': true
+        },
+        edgeTypes: {
+            'import': true, 'call': true, 'type_ref': true
+        }
+    };
+
+    function isNodeVisible(d) {
+        // File nodes: visible if path matches directory filter (or no filter)
+        // Symbol nodes: visible if their kind matches symbol type filter AND their file matches dir filter
+        var dirMatch = !filterState.dirQuery ||
+            (d.path || d.file_path || '').toLowerCase().includes(filterState.dirQuery);
+
+        if (d._isSymbol) {
+            var kindKey = d.kind; // "function", "class", etc.
+            // "interface" shares the Type filter checkbox
+            if (kindKey === 'interface') kindKey = 'type';
+            var kindMatch = filterState.symbolTypes[kindKey] !== false;
+            return dirMatch && kindMatch;
+        }
+
+        return dirMatch;
+    }
+
+    function isEdgeVisible(e) {
+        var et = e.edge_type || 'import';
+        if (et === 'parent_child') return true; // Always show parent-child edges
+        if (et === 're_export') return true; // Always show re-exports
+        return filterState.edgeTypes[et] !== false;
+    }
+
+    function applyFilters() {
+        node.style('opacity', function(d) {
+            return isNodeVisible(d) ? 1 : 0.08;
+        }).style('pointer-events', function(d) {
+            return isNodeVisible(d) ? null : 'none';
+        });
+
+        labels.style('opacity', function(d) {
+            if (!document.getElementById('toggle-labels').checked || currentZoom < 0.4) return 0;
+            return isNodeVisible(d) ? 1 : 0.04;
+        });
+
+        link.style('opacity', function(e) {
+            if (!isEdgeVisible(e)) return 0;
+            // Also check if both source and target nodes are visible
+            var si = typeof e.source === 'object' ? e.source.id : e.source;
+            var ti = typeof e.target === 'object' ? e.target.id : e.target;
+            var srcNode = nodes.find(function(n) { return n.id === si; });
+            var tgtNode = nodes.find(function(n) { return n.id === ti; });
+            if (srcNode && !isNodeVisible(srcNode)) return 0;
+            if (tgtNode && !isNodeVisible(tgtNode)) return 0;
+            return 0.25;
+        }).style('pointer-events', function(e) {
+            return isEdgeVisible(e) ? null : 'none';
+        });
+    }
+
+    // Directory filter (INTR-05)
+    document.getElementById('filter-dir').addEventListener('input', function() {
+        filterState.dirQuery = this.value.trim().toLowerCase();
+        applyFilters();
+    });
+
+    // Symbol type filters (INTR-06)
+    var symbolFilterMap = {
+        'filter-fn': 'function',
+        'filter-class': 'class',
+        'filter-type': 'type',  // Also covers 'interface'
+        'filter-hook': 'hook',
+        'filter-enum': 'enum'
+    };
+
+    Object.keys(symbolFilterMap).forEach(function(checkboxId) {
+        var kindKey = symbolFilterMap[checkboxId];
+        document.getElementById(checkboxId).addEventListener('change', function() {
+            filterState.symbolTypes[kindKey] = this.checked;
+            if (kindKey === 'type') {
+                filterState.symbolTypes['interface'] = this.checked;
+            }
+            syncPillsFromState();
+            applyFilters();
+        });
+    });
+
+    // Edge type filters (INTR-07)
+    var edgeFilterMap = {
+        'filter-edge-import': 'import',
+        'filter-edge-call': 'call',
+        'filter-edge-typeref': 'type_ref'
+    };
+
+    Object.keys(edgeFilterMap).forEach(function(checkboxId) {
+        var edgeKey = edgeFilterMap[checkboxId];
+        document.getElementById(checkboxId).addEventListener('change', function() {
+            filterState.edgeTypes[edgeKey] = this.checked;
+            syncPillsFromState();
+            applyFilters();
+        });
+    });
+
+    // Quick-Filter Pills (D-80) — bidirectional sync with panel checkboxes
+    var pillMap = {
+        'functions': { stateKey: 'function', checkboxId: 'filter-fn', type: 'symbol' },
+        'classes': { stateKey: 'class', checkboxId: 'filter-class', type: 'symbol' },
+        'imports': { stateKey: 'import', checkboxId: 'filter-edge-import', type: 'edge' },
+        'calls': { stateKey: 'call', checkboxId: 'filter-edge-call', type: 'edge' }
+    };
+
+    function syncPillsFromState() {
+        document.querySelectorAll('.pill').forEach(function(pill) {
+            var filterName = pill.getAttribute('data-filter');
+            var mapping = pillMap[filterName];
+            if (!mapping) return;
+            var isActive;
+            if (mapping.type === 'symbol') {
+                isActive = filterState.symbolTypes[mapping.stateKey];
+            } else {
+                isActive = filterState.edgeTypes[mapping.stateKey];
+            }
+            pill.classList.toggle('active', isActive);
+        });
+    }
+
+    // Initialize pills as active (all filters start checked)
+    syncPillsFromState();
+
+    document.querySelectorAll('.pill').forEach(function(pill) {
+        pill.addEventListener('click', function() {
+            var filterName = this.getAttribute('data-filter');
+            var mapping = pillMap[filterName];
+            if (!mapping) return;
+
+            // Toggle the state
+            if (mapping.type === 'symbol') {
+                var current = filterState.symbolTypes[mapping.stateKey];
+                filterState.symbolTypes[mapping.stateKey] = !current;
+                if (mapping.stateKey === 'type') {
+                    filterState.symbolTypes['interface'] = !current;
+                }
+                // Sync checkbox
+                document.getElementById(mapping.checkboxId).checked = !current;
+            } else {
+                var currentEdge = filterState.edgeTypes[mapping.stateKey];
+                filterState.edgeTypes[mapping.stateKey] = !currentEdge;
+                document.getElementById(mapping.checkboxId).checked = !currentEdge;
+            }
+
+            syncPillsFromState();
+            applyFilters();
+        });
+    });
+
     // === Panel controls ===
 
-    // Filters: reset
+    // Filters: reset (replaces prior reset handler — now also resets filter panel controls)
     document.getElementById('btn-reset-filters').addEventListener('click', function() {
         document.getElementById('search-files').value = '';
+        document.getElementById('filter-dir').value = '';
         document.getElementById('toggle-orphans').checked = true;
-        node.style('display', null).style('opacity', 1);
+
+        // Reset symbol type filters
+        Object.keys(symbolFilterMap).forEach(function(id) {
+            document.getElementById(id).checked = true;
+        });
+        filterState.symbolTypes = { 'function': true, 'class': true, 'type': true, 'interface': true, 'hook': true, 'enum': true };
+
+        // Reset edge type filters
+        Object.keys(edgeFilterMap).forEach(function(id) {
+            document.getElementById(id).checked = true;
+        });
+        filterState.edgeTypes = { 'import': true, 'call': true, 'type_ref': true };
+        filterState.dirQuery = '';
+
+        syncPillsFromState();
+
+        node.style('display', null).style('opacity', 1).style('pointer-events', null);
         labels.style('display', null).style('opacity', currentZoom < 0.4 ? 0 : 1);
+        link.style('opacity', 0.25).style('pointer-events', null);
     });
 
     // Filters: search
