@@ -564,6 +564,9 @@ async function loadAndRender() {
             });
 
         document.getElementById('focus-hint').style.display = 'block';
+        // Hide tooltip when focus activates (it persists from the preceding hover)
+        document.getElementById('tooltip').style.display = 'none';
+        hoverActive = false;
     }
 
     function clearFocus() {
