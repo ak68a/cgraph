@@ -906,7 +906,23 @@ async function loadAndRender() {
         if (outItems.length === 0 && inItems.length === 0) {
             var empty = document.createElement('div');
             empty.className = 'detail-empty';
-            empty.textContent = 'No connections';
+            if (!d._isSymbol) {
+                var crossFileCount = 0;
+                symbolEdges.forEach(function(se) {
+                    var src = typeof se.source === 'object' ? se.source.id : se.source;
+                    var tgt = typeof se.target === 'object' ? se.target.id : se.target;
+                    var srcFile = src.indexOf('::') !== -1 ? src.substring(0, src.indexOf('::')) : src;
+                    var tgtFile = tgt.indexOf('::') !== -1 ? tgt.substring(0, tgt.indexOf('::')) : tgt;
+                    if ((srcFile === d.id || tgtFile === d.id) && srcFile !== tgtFile) crossFileCount++;
+                });
+                if (crossFileCount > 0) {
+                    empty.textContent = 'Isolated file — no direct file imports, but symbols have ' + crossFileCount + ' cross-file relationship' + (crossFileCount > 1 ? 's' : '') + '. Expand to see.';
+                } else {
+                    empty.textContent = 'Isolated file — no connections found in scanned codebase';
+                }
+            } else {
+                empty.textContent = 'No connections';
+            }
             bodyEl.appendChild(empty);
         }
 

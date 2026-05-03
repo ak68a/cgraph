@@ -123,6 +123,20 @@
     .toggle-switch input:checked + .toggle-track { background: #7f6df2; }
     .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
 
+    .info-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      color: #555; cursor: default; position: relative; flex-shrink: 0; margin-left: 4px;
+      vertical-align: middle; transform: translateY(-0.5px);
+    }
+    .info-icon:hover { color: #999; }
+    .info-tip {
+      display: none; position: fixed;
+      background: #2a2a2a; border: 1px solid #444; border-radius: 6px;
+      padding: 6px 10px; font-size: 11px; font-style: normal; font-family: inherit;
+      color: #ccc; white-space: nowrap; z-index: 10000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4); pointer-events: none;
+    }
+
     .search-wrap {
       position: relative; margin-bottom: 6px;
     }
@@ -290,8 +304,12 @@
           <input type="text" class="search-input" id="search-files" placeholder="Search files...">
         </div>
         <div class="ctrl-row">
-          <span class="ctrl-label">Orphans</span>
+          <span class="ctrl-label">Isolated files <span class="info-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="info-tip">Files with no resolved import edges to other files. Their symbols may still have cross-file relationships.</span></span></span>
           <label class="toggle-switch"><input type="checkbox" id="toggle-orphans" checked><span class="toggle-track"></span></label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Dark room <span class="info-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="info-tip">Hide filtered-out nodes entirely instead of fading them</span></span></span>
+          <label class="toggle-switch"><input type="checkbox" id="toggle-dark-room"><span class="toggle-track"></span></label>
         </div>
         <div style="margin-top:6px;margin-bottom:2px;"><span class="ctrl-label" style="font-weight:500;color:#dcddde;">Symbol types</span></div>
         <div class="ctrl-row">
