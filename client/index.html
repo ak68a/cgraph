@@ -21,130 +21,113 @@
       background: #1a1a1a;
       border-bottom: 1px solid #2a2a2a;
     }
-    #project-name {
-      color: #dcddde;
-      font-size: 13px;
-      font-weight: 500;
-    }
-    #stats {
-      color: #666;
-      font-size: 13px;
-    }
-    #graph {
-      width: 100vw;
-      height: calc(100vh - 40px);
-    }
+    #project-name { color: #dcddde; font-size: 13px; font-weight: 500; }
+    #stats { color: #666; font-size: 13px; }
+    #graph { width: 100vw; height: calc(100vh - 40px); }
+
+    /* Tooltip */
     #tooltip {
-      position: fixed;
-      display: none;
-      background: #2a2a2a;
-      border: 1px solid #3a3a3a;
-      border-radius: 6px;
-      padding: 8px 12px;
-      pointer-events: none;
-      z-index: 1000;
+      position: fixed; display: none;
+      background: #2a2a2a; border: 1px solid #3a3a3a;
+      border-radius: 6px; padding: 8px 12px;
+      pointer-events: none; z-index: 1000;
     }
-    .tooltip-path {
-      color: #dcddde;
-      font-size: 13px;
-      font-weight: 400;
-      margin-bottom: 4px;
+    .tooltip-path { color: #dcddde; font-size: 13px; margin-bottom: 4px; }
+    .tooltip-exports { color: #999; font-size: 11px; margin-bottom: 2px; }
+    .tooltip-edges { color: #666; font-size: 11px; }
+
+    /* Settings panel */
+    #panel {
+      position: fixed; top: 40px; right: 0;
+      width: 240px; height: calc(100vh - 40px);
+      background: #262626; border-left: 1px solid #333;
+      z-index: 998; overflow-y: auto;
+      transition: transform 0.2s ease;
     }
-    .tooltip-exports {
-      color: #999;
-      font-size: 11px;
-      font-weight: 400;
-      margin-bottom: 2px;
+    #panel.collapsed { transform: translateX(240px); }
+    #panel-toggle {
+      position: fixed; top: 48px; right: 8px;
+      width: 28px; height: 28px;
+      background: #333; border: 1px solid #444;
+      border-radius: 4px; color: #999;
+      font-size: 14px; cursor: pointer;
+      z-index: 999; display: flex;
+      align-items: center; justify-content: center;
+      transition: right 0.2s ease;
     }
-    .tooltip-edges {
-      color: #666;
-      font-size: 11px;
-      font-weight: 400;
+    #panel-toggle.open { right: 248px; }
+    #panel-toggle:hover { background: #444; color: #ddd; }
+
+    .panel-section {
+      border-bottom: 1px solid #333;
     }
-    #legend {
-      position: fixed;
-      bottom: 32px;
-      right: 32px;
-      width: 180px;
-      background: #2a2a2a;
-      border: 1px solid #3a3a3a;
-      border-radius: 8px;
-      padding: 16px;
-      z-index: 999;
+    .section-header {
+      padding: 10px 14px;
+      color: #dcddde; font-size: 12px; font-weight: 600;
+      cursor: pointer; user-select: none;
+      display: flex; align-items: center;
+      justify-content: space-between;
     }
-    .legend-header {
-      color: #999;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      user-select: none;
+    .section-header:hover { background: #2e2e2e; }
+    .section-arrow { color: #666; font-size: 10px; transition: transform 0.15s; }
+    .section-arrow.open { transform: rotate(90deg); }
+    .section-body { padding: 6px 14px 12px; display: none; }
+    .section-body.open { display: block; }
+
+    .ctrl-row {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
     }
-    .legend-content {
-      margin-top: 8px;
+    .ctrl-label { color: #999; font-size: 11px; }
+    .ctrl-row input[type="range"] {
+      width: 100px; height: 4px;
+      -webkit-appearance: none; appearance: none;
+      background: #444; border-radius: 2px; outline: none;
     }
-    .legend-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .ctrl-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px;
+      background: #ddd; border-radius: 50%; cursor: pointer;
+    }
+    .toggle-switch {
+      position: relative; width: 36px; height: 20px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: #444; border-radius: 10px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-track::after {
+      content: ""; position: absolute;
+      width: 16px; height: 16px;
+      left: 2px; top: 2px;
+      background: #ddd; border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: #7f6df2; }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
+
+    .search-input {
+      width: 100%; padding: 6px 8px;
+      background: #333; border: 1px solid #444;
+      border-radius: 4px; color: #ddd;
+      font-size: 11px; outline: none;
       margin-bottom: 8px;
     }
-    .legend-swatch {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .legend-label {
-      color: #999;
-      font-size: 11px;
-    }
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 12px;
-      padding-top: 8px;
-      border-top: 1px solid #3a3a3a;
-    }
-    .toggle-row label {
-      color: #999;
-      font-size: 11px;
-      cursor: pointer;
-    }
-    #empty-state {
-      display: none;
-      position: absolute;
-      top: 50%;
-      left: 50%;
+    .search-input::placeholder { color: #666; }
+    .search-input:focus { border-color: #7f6df2; }
+
+    /* Empty/error states */
+    #empty-state, #error-state {
+      display: none; position: absolute;
+      top: 50%; left: 50%;
       transform: translate(-50%, -50%);
       text-align: center;
     }
-    #empty-state h2 {
-      color: #dcddde;
-      font-size: 18px;
-      margin-bottom: 8px;
-    }
-    #empty-state p {
-      color: #999;
-      font-size: 13px;
-    }
-    #error-state {
-      display: none;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-    }
-    #error-state h2 {
-      color: #dcddde;
-      font-size: 18px;
-      margin-bottom: 8px;
-    }
-    #error-state p {
-      color: #999;
-      font-size: 13px;
-    }
+    #empty-state h2, #error-state h2 { color: #dcddde; font-size: 18px; margin-bottom: 8px; }
+    #empty-state p, #error-state p { color: #999; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -158,27 +141,77 @@
     <div class="tooltip-exports"></div>
     <div class="tooltip-edges"></div>
   </div>
-  <div id="legend">
-    <div class="legend-header">Legend &#9662;</div>
-    <div class="legend-content">
-      <div class="legend-row">
-        <div class="legend-swatch" style="background:#7f6df2"></div>
-        <span class="legend-label">File (active)</span>
+
+  <button id="panel-toggle" class="open" title="Toggle settings">&#9881;</button>
+  <div id="panel">
+
+    <div class="panel-section">
+      <div class="section-header" data-section="filters">
+        <span>Filters</span><span class="section-arrow open">&#9654;</span>
       </div>
-      <div class="legend-row">
-        <div class="legend-swatch" style="background:#a882ff"></div>
-        <span class="legend-label">Connected</span>
-      </div>
-      <div class="legend-row">
-        <div class="legend-swatch" style="background:#555"></div>
-        <span class="legend-label">File (idle)</span>
-      </div>
-      <div class="toggle-row">
-        <input type="checkbox" id="halos-toggle">
-        <label for="halos-toggle">Directory halos</label>
+      <div class="section-body open" id="sec-filters">
+        <input type="text" class="search-input" id="search-files" placeholder="Search files...">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Orphans</span>
+          <label class="toggle-switch"><input type="checkbox" id="toggle-orphans" checked><span class="toggle-track"></span></label>
+        </div>
       </div>
     </div>
+
+    <div class="panel-section">
+      <div class="section-header" data-section="display">
+        <span>Display</span><span class="section-arrow">&#9654;</span>
+      </div>
+      <div class="section-body" id="sec-display">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Arrows</span>
+          <label class="toggle-switch"><input type="checkbox" id="toggle-arrows" checked><span class="toggle-track"></span></label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Labels</span>
+          <label class="toggle-switch"><input type="checkbox" id="toggle-labels" checked><span class="toggle-track"></span></label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Dir halos</span>
+          <label class="toggle-switch"><input type="checkbox" id="halos-toggle"><span class="toggle-track"></span></label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Node size</span>
+          <input type="range" id="slider-node-size" min="0.3" max="3" step="0.1" value="1">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Link thickness</span>
+          <input type="range" id="slider-link-thickness" min="0.5" max="4" step="0.25" value="1">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-header" data-section="forces">
+        <span>Forces</span><span class="section-arrow">&#9654;</span>
+      </div>
+      <div class="section-body" id="sec-forces">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Center force</span>
+          <input type="range" id="slider-center" min="0" max="1" step="0.01" value="0.12">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Repel force</span>
+          <input type="range" id="slider-repel" min="0" max="300" step="5" value="60">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Link force</span>
+          <input type="range" id="slider-link-force" min="0" max="1" step="0.05" value="0.9">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Link distance</span>
+          <input type="range" id="slider-link-dist" min="10" max="200" step="5" value="50">
+        </div>
+      </div>
+    </div>
+
   </div>
+
   <div id="empty-state">
     <h2>No files found</h2>
     <p id="empty-message"></p>
