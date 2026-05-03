@@ -246,18 +246,21 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
 // ─── Port Discovery ───────────────────────────────────────────────────────────
 
 /// Find an available TCP port starting from `start`, binding to 127.0.0.1 (T-04-02).
-pub async fn find_available_port(start: u16) -> (u16, tokio::net::TcpListener) {
-    let mut port = start;
-    loop {
+pub async fn find_available_port(start: u16) -> Result<(u16, tokio::net::TcpListener), std::io::Error> {
+    for port in start..=65535 {
         match tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await {
-            Ok(listener) => return (port, listener),
+            Ok(listener) => return Ok((port, listener)),
             Err(_) => {
-                let next = port + 1;
-                eprintln!("Port {} in use, trying {}...", port, next);
-                port = next;
+                if port < 65535 {
+                    eprintln!("Port {} in use, trying {}...", port, port + 1);
+                }
             }
         }
     }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AddrNotAvailable,
+        format!("No available port found in range {}..65535", start),
+    ))
 }
 
 // ─── Axum Handlers ────────────────────────────────────────────────────────────

@@ -117,7 +117,7 @@ async fn main() -> Result<()> {
     };
 
     // Find available port (D-60: start at 3000, increment if taken)
-    let (port, listener) = find_available_port(3000).await;
+    let (port, listener) = find_available_port(3000).await?;
     let url = format!("http://localhost:{}", port);
 
     // Spawn server using cgraph_server::serve() wrapper (encapsulates axum)

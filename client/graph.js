@@ -74,8 +74,6 @@ async function loadAndRender() {
 
     var nodes = data.nodes.map(function(d) { return Object.assign({}, d); });
     var edges = data.edges.map(function(d) { return Object.assign({}, d); });
-    var allNodes = nodes;
-    var allEdges = edges;
 
     var adjacency = new Map();
     nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
