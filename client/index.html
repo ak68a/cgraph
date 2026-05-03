@@ -7,8 +7,8 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #1a1a2e;
-      color: #e0e0e0;
+      background: #202020;
+      color: #dcddde;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow: hidden;
     }
@@ -18,14 +18,16 @@
       align-items: center;
       justify-content: space-between;
       padding: 0 16px;
-      background: #16213e;
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
     }
     #project-name {
-      color: #ffffff;
+      color: #dcddde;
       font-size: 13px;
+      font-weight: 500;
     }
     #stats {
-      color: #a0aec0;
+      color: #666;
       font-size: 13px;
     }
     #graph {
@@ -35,27 +37,27 @@
     #tooltip {
       position: fixed;
       display: none;
-      background: #16213e;
-      border: 1px solid #2d3748;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
       border-radius: 6px;
       padding: 8px 12px;
       pointer-events: none;
       z-index: 1000;
     }
     .tooltip-path {
-      color: #ffffff;
+      color: #dcddde;
       font-size: 13px;
       font-weight: 400;
       margin-bottom: 4px;
     }
     .tooltip-exports {
-      color: #a0aec0;
+      color: #999;
       font-size: 11px;
       font-weight: 400;
       margin-bottom: 2px;
     }
     .tooltip-edges {
-      color: #718096;
+      color: #666;
       font-size: 11px;
       font-weight: 400;
     }
@@ -64,14 +66,14 @@
       bottom: 32px;
       right: 32px;
       width: 180px;
-      background: #16213e;
-      border: 1px solid #2d3748;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
       border-radius: 8px;
       padding: 16px;
       z-index: 999;
     }
     .legend-header {
-      color: #a0aec0;
+      color: #999;
       font-size: 11px;
       font-weight: 600;
       cursor: pointer;
@@ -93,7 +95,7 @@
       flex-shrink: 0;
     }
     .legend-label {
-      color: #a0aec0;
+      color: #999;
       font-size: 11px;
     }
     .toggle-row {
@@ -102,10 +104,10 @@
       gap: 8px;
       margin-top: 12px;
       padding-top: 8px;
-      border-top: 1px solid #2d3748;
+      border-top: 1px solid #3a3a3a;
     }
     .toggle-row label {
-      color: #a0aec0;
+      color: #999;
       font-size: 11px;
       cursor: pointer;
     }
@@ -118,12 +120,12 @@
       text-align: center;
     }
     #empty-state h2 {
-      color: #ffffff;
+      color: #dcddde;
       font-size: 18px;
       margin-bottom: 8px;
     }
     #empty-state p {
-      color: #a0aec0;
+      color: #999;
       font-size: 13px;
     }
     #error-state {
@@ -135,12 +137,12 @@
       text-align: center;
     }
     #error-state h2 {
-      color: #ffffff;
+      color: #dcddde;
       font-size: 18px;
       margin-bottom: 8px;
     }
     #error-state p {
-      color: #a0aec0;
+      color: #999;
       font-size: 13px;
     }
   </style>
@@ -160,8 +162,16 @@
     <div class="legend-header">Legend &#9662;</div>
     <div class="legend-content">
       <div class="legend-row">
-        <div class="legend-swatch" style="background:#4a9eff"></div>
-        <span class="legend-label">File</span>
+        <div class="legend-swatch" style="background:#7f6df2"></div>
+        <span class="legend-label">File (active)</span>
+      </div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:#a882ff"></div>
+        <span class="legend-label">Connected</span>
+      </div>
+      <div class="legend-row">
+        <div class="legend-swatch" style="background:#555"></div>
+        <span class="legend-label">File (idle)</span>
       </div>
       <div class="toggle-row">
         <input type="checkbox" id="halos-toggle">

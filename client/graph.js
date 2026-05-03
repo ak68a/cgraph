@@ -1,91 +1,107 @@
-// cgraph browser client — D3 force graph visualization
-// Vanilla JS, no build step (D-61). Requires d3.v7.min.js loaded before this script.
-
 document.addEventListener('DOMContentLoaded', function() {
     loadAndRender();
 });
 
 async function loadAndRender() {
-    // 1. Fetch graph data from the server
-    let data;
+    var data;
     try {
-        const response = await fetch('/api/graph');
+        var response = await fetch('/api/graph');
         if (!response.ok) throw new Error('HTTP ' + response.status);
         data = await response.json();
     } catch (err) {
-        const errorState = document.getElementById('error-state');
-        const errorMessage = document.getElementById('error-message');
-        errorMessage.textContent = 'Failed to load graph data. Check that the cgraph server is running.';
+        var errorState = document.getElementById('error-state');
+        document.getElementById('error-message').textContent =
+            'Failed to load graph data. Check that the cgraph server is running.';
         errorState.style.display = 'block';
         return;
     }
 
-    // 2. Handle empty state
     if (!data.nodes || data.nodes.length === 0) {
-        const emptyState = document.getElementById('empty-state');
-        const emptyMessage = document.getElementById('empty-message');
-        const projectName = data.project_name || 'this project';
-        emptyMessage.textContent = 'cgraph found no source files in ' + projectName + '. Check that the path is correct and contains .ts, .tsx, or other supported files.';
+        var emptyState = document.getElementById('empty-state');
+        var projectName = data.project_name || 'this project';
+        document.getElementById('empty-message').textContent =
+            'cgraph found no source files in ' + projectName +
+            '. Check that the path is correct and contains .ts, .tsx, or other supported files.';
         emptyState.style.display = 'block';
         return;
     }
 
-    // 3. Update header
     document.getElementById('project-name').textContent = data.project_name || '';
-    const s = data.stats;
+    var s = data.stats;
     document.getElementById('stats').textContent =
         s.files + ' files • ' + s.symbols + ' symbols • ' + s.edges + ' edges • ' + s.elapsed_ms + 'ms';
 
-    // 4. Create SVG
-    const width = window.innerWidth;
-    const height = window.innerHeight - 40; // minus header height
+    var width = window.innerWidth;
+    var height = window.innerHeight - 40;
 
-    const svg = d3.select('#graph')
+    var svg = d3.select('#graph')
         .append('svg')
         .attr('width', width)
         .attr('height', height);
 
-    // 5. Define arrowhead marker in SVG defs
-    svg.append('defs').append('marker')
-        .attr('id', 'arrowhead')
+    // Arrowhead markers — idle and highlighted variants
+    var defs = svg.append('defs');
+
+    defs.append('marker')
+        .attr('id', 'arrow')
         .attr('viewBox', '-0 -5 10 10')
-        .attr('refX', 13)
-        .attr('refY', 0)
+        .attr('refX', 13).attr('refY', 0)
         .attr('orient', 'auto')
-        .attr('markerWidth', 6)
-        .attr('markerHeight', 4)
+        .attr('markerWidth', 6).attr('markerHeight', 4)
       .append('path')
         .attr('d', 'M 0,-5 L 10,0 L 0,5')
-        .attr('fill', '#555555');
+        .attr('fill', '#444');
 
-    // 6. Create container group for zoom/pan
-    const g = svg.append('g');
+    defs.append('marker')
+        .attr('id', 'arrow-active')
+        .attr('viewBox', '-0 -5 10 10')
+        .attr('refX', 13).attr('refY', 0)
+        .attr('orient', 'auto')
+        .attr('markerWidth', 6).attr('markerHeight', 4)
+      .append('path')
+        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+        .attr('fill', '#a882ff');
+
+    var g = svg.append('g');
+
+    var currentZoom = 1;
     svg.call(d3.zoom()
         .scaleExtent([0.1, 10])
         .on('zoom', function(event) {
             g.attr('transform', event.transform);
+            currentZoom = event.transform.k;
+            updateLabelVisibility();
         }));
 
-    // 7. Pre-settle force simulation (VIZN-07)
-    // Deep-copy nodes/edges so D3 can mutate them with x/y positions
-    const nodes = data.nodes.map(d => Object.assign({}, d));
-    const edges = data.edges.map(d => Object.assign({}, d));
+    var nodes = data.nodes.map(function(d) { return Object.assign({}, d); });
+    var edges = data.edges.map(function(d) { return Object.assign({}, d); });
 
-    const simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(edges).id(d => d.id).distance(80))
-        .force('charge', d3.forceManyBody().strength(-120))
-        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-        .force('collide', d3.forceCollide().radius(d => d.radius + 20))
+    // Build adjacency index for hover highlight
+    var adjacency = new Map();
+    nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
+    edges.forEach(function(e) {
+        var srcId = typeof e.source === 'object' ? e.source.id : e.source;
+        var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+        if (adjacency.has(srcId)) adjacency.get(srcId).add(tgtId);
+        if (adjacency.has(tgtId)) adjacency.get(tgtId).add(srcId);
+    });
+
+    // Obsidian-style force layout: stronger center pull creates circular cluster at zoom-out
+    var simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(edges).id(function(d) { return d.id; }).distance(60).strength(0.3))
+        .force('charge', d3.forceManyBody().strength(-80))
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(0.15))
+        .force('collide', d3.forceCollide().radius(function(d) { return d.radius + 12; }))
+        .force('x', d3.forceX(width / 2).strength(0.03))
+        .force('y', d3.forceY(height / 2).strength(0.03))
         .stop();
 
-    // Run synchronously to settled state — no animation on load
     simulation.tick(300);
 
-    // Helper: shorten line endpoint to node circumference so arrowhead is visible (VIZN-05)
     function adjustedEndpoint(source, target, targetRadius) {
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        var dx = target.x - source.x;
+        var dy = target.y - source.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
         if (dist === 0) return { x: target.x, y: target.y };
         return {
             x: target.x - (dx / dist) * (targetRadius + 8),
@@ -93,63 +109,106 @@ async function loadAndRender() {
         };
     }
 
-    // 8. Render edges (below nodes in DOM order)
-    const linkGroup = g.append('g').attr('class', 'edges');
-    const link = linkGroup.selectAll('line')
+    // Edges
+    var linkGroup = g.append('g').attr('class', 'edges');
+    var link = linkGroup.selectAll('line')
         .data(edges)
         .join('line')
-        .attr('stroke', '#555555')
-        .attr('stroke-opacity', 0.4)
-        .attr('marker-end', 'url(#arrowhead)');
+        .attr('stroke', '#444')
+        .attr('stroke-opacity', 0.25)
+        .attr('marker-end', 'url(#arrow)');
 
-    // Set static positions from pre-settled simulation
     link.each(function(d) {
-        const src = typeof d.source === 'object' ? d.source : nodes.find(n => n.id === d.source);
-        const tgt = typeof d.target === 'object' ? d.target : nodes.find(n => n.id === d.target);
+        var src = typeof d.source === 'object' ? d.source : nodes.find(function(n) { return n.id === d.source; });
+        var tgt = typeof d.target === 'object' ? d.target : nodes.find(function(n) { return n.id === d.target; });
         if (!src || !tgt) return;
-        const ep = adjustedEndpoint(src, tgt, tgt.radius);
+        var ep = adjustedEndpoint(src, tgt, tgt.radius);
         d3.select(this)
-            .attr('x1', src.x)
-            .attr('y1', src.y)
-            .attr('x2', ep.x)
-            .attr('y2', ep.y);
+            .attr('x1', src.x).attr('y1', src.y)
+            .attr('x2', ep.x).attr('y2', ep.y);
     });
 
-    // 9. Render nodes (above edges in DOM order)
-    const nodeGroup = g.append('g').attr('class', 'nodes');
-    const node = nodeGroup.selectAll('circle')
+    // Nodes — idle: muted gray, like Obsidian
+    var nodeGroup = g.append('g').attr('class', 'nodes');
+    var node = nodeGroup.selectAll('circle')
         .data(nodes)
         .join('circle')
-        .attr('cx', d => d.x)
-        .attr('cy', d => d.y)
-        .attr('r', d => d.radius)
-        .attr('fill', '#4a9eff')
-        .attr('stroke', '#2a2a4e')
-        .attr('stroke-width', 1);
+        .attr('cx', function(d) { return d.x; })
+        .attr('cy', function(d) { return d.y; })
+        .attr('r', function(d) { return d.radius; })
+        .attr('fill', '#555')
+        .attr('stroke', '#333')
+        .attr('stroke-width', 1)
+        .style('cursor', 'pointer')
+        .style('transition', 'fill 0.15s, opacity 0.15s');
 
-    // 10. Render labels below nodes
-    const labelGroup = g.append('g').attr('class', 'labels');
-    labelGroup.selectAll('text')
+    // Labels
+    var labelGroup = g.append('g').attr('class', 'labels');
+    var labels = labelGroup.selectAll('text')
         .data(nodes)
         .join('text')
-        .attr('x', d => d.x)
-        .attr('y', d => d.y + d.radius + 6 + 11)
+        .attr('x', function(d) { return d.x; })
+        .attr('y', function(d) { return d.y + d.radius + 6 + 11; })
         .attr('text-anchor', 'middle')
-        .attr('fill', '#ffffff')
+        .attr('fill', '#999')
         .attr('font-size', '11px')
         .attr('pointer-events', 'none')
-        .text(d => d.filename);
+        .style('transition', 'opacity 0.15s')
+        .text(function(d) { return d.filename; });
 
-    // 11. Hover tooltip (D-55)
-    const tooltip = document.getElementById('tooltip');
-    const tooltipPath = tooltip.querySelector('.tooltip-path');
-    const tooltipExports = tooltip.querySelector('.tooltip-exports');
-    const tooltipEdges = tooltip.querySelector('.tooltip-edges');
+    // Semantic zoom: hide labels when zoomed out far
+    function updateLabelVisibility() {
+        labels.style('opacity', currentZoom < 0.4 ? 0 : Math.min(1, (currentZoom - 0.3) * 3));
+    }
+
+    // Hover highlight — Obsidian style: hovered node glows purple,
+    // connected nodes light up, everything else fades
+    var hoverActive = false;
 
     node.on('mouseenter', function(event, d) {
-        // Build export summary string
-        const counts = d.export_counts;
-        const kinds = [
+        hoverActive = true;
+        var connected = adjacency.get(d.id) || new Set();
+
+        node
+            .attr('fill', function(n) {
+                if (n.id === d.id) return '#7f6df2';
+                if (connected.has(n.id)) return '#a882ff';
+                return '#555';
+            })
+            .style('opacity', function(n) {
+                if (n.id === d.id || connected.has(n.id)) return 1;
+                return 0.12;
+            });
+
+        labels.style('opacity', function(n) {
+            if (currentZoom < 0.4) return 0;
+            if (n.id === d.id || connected.has(n.id)) return 1;
+            return 0.08;
+        });
+
+        link
+            .attr('stroke', function(e) {
+                var srcId = typeof e.source === 'object' ? e.source.id : e.source;
+                var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+                if (srcId === d.id || tgtId === d.id) return '#a882ff';
+                return '#444';
+            })
+            .attr('stroke-opacity', function(e) {
+                var srcId = typeof e.source === 'object' ? e.source.id : e.source;
+                var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+                if (srcId === d.id || tgtId === d.id) return 0.7;
+                return 0.05;
+            })
+            .attr('marker-end', function(e) {
+                var srcId = typeof e.source === 'object' ? e.source.id : e.source;
+                var tgtId = typeof e.target === 'object' ? e.target.id : e.target;
+                if (srcId === d.id || tgtId === d.id) return 'url(#arrow-active)';
+                return 'url(#arrow)';
+            });
+
+        // Tooltip
+        var counts = d.export_counts;
+        var kinds = [
             ['functions', counts.functions],
             ['classes', counts.classes],
             ['types', counts.types],
@@ -157,105 +216,92 @@ async function loadAndRender() {
             ['hooks', counts.hooks],
             ['enums', counts.enums]
         ];
-        const parts = kinds.filter(([, n]) => n > 0).map(([k, n]) => n + ' ' + k);
-        const exportSummary = parts.length > 0 ? parts.join(', ') : 'no exports';
+        var parts = kinds.filter(function(k) { return k[1] > 0; }).map(function(k) { return k[1] + ' ' + k[0]; });
+        var exportSummary = parts.length > 0 ? parts.join(', ') : 'no exports';
 
-        tooltipPath.textContent = d.path;
-        tooltipExports.textContent = exportSummary;
-        tooltipEdges.textContent = d.incoming + ' incoming • ' + d.outgoing + ' outgoing';
-
+        var tooltip = document.getElementById('tooltip');
+        tooltip.querySelector('.tooltip-path').textContent = d.path;
+        tooltip.querySelector('.tooltip-exports').textContent = exportSummary;
+        tooltip.querySelector('.tooltip-edges').textContent = d.incoming + ' incoming • ' + d.outgoing + ' outgoing';
         tooltip.style.display = 'block';
         tooltip.style.left = (event.pageX + 12) + 'px';
         tooltip.style.top = event.pageY + 'px';
     });
 
     node.on('mousemove', function(event) {
+        var tooltip = document.getElementById('tooltip');
         tooltip.style.left = (event.pageX + 12) + 'px';
         tooltip.style.top = event.pageY + 'px';
     });
 
     node.on('mouseleave', function() {
-        tooltip.style.display = 'none';
+        hoverActive = false;
+        node.attr('fill', '#555').style('opacity', 1);
+        labels.style('opacity', currentZoom < 0.4 ? 0 : 1);
+        link.attr('stroke', '#444').attr('stroke-opacity', 0.25).attr('marker-end', 'url(#arrow)');
+        document.getElementById('tooltip').style.display = 'none';
     });
 
-    // 12. Legend panel collapse/expand
-    const legendHeader = document.querySelector('.legend-header');
-    const legendContent = document.querySelector('.legend-content');
-    let legendExpanded = true;
+    // Legend collapse/expand
+    var legendHeader = document.querySelector('.legend-header');
+    var legendContent = document.querySelector('.legend-content');
+    var legendExpanded = true;
 
     legendHeader.addEventListener('click', function() {
         legendExpanded = !legendExpanded;
         legendContent.style.display = legendExpanded ? 'block' : 'none';
-        // Update arrow character
         legendHeader.innerHTML = legendExpanded ? 'Legend &#9662;' : 'Legend &#9652;';
     });
 
-    // 13. Directory halos (D-56) — toggle-activated, default OFF
-    const halosToggle = document.getElementById('halos-toggle');
-    let halosGroup = null;
+    // Directory halos
+    var halosToggle = document.getElementById('halos-toggle');
+    var halosGroup = null;
 
     function renderHalos() {
-        // Remove existing halos
-        if (halosGroup) {
-            halosGroup.remove();
-            halosGroup = null;
-        }
-
+        if (halosGroup) { halosGroup.remove(); halosGroup = null; }
         if (!halosToggle.checked) return;
 
-        // Group nodes by directory
-        const dirMap = new Map();
-        nodes.forEach(d => {
-            const lastSlash = d.path.lastIndexOf('/');
-            const dir = lastSlash >= 0 ? d.path.substring(0, lastSlash) : '';
+        var dirMap = new Map();
+        nodes.forEach(function(d) {
+            var lastSlash = d.path.lastIndexOf('/');
+            var dir = lastSlash >= 0 ? d.path.substring(0, lastSlash) : '';
             if (!dirMap.has(dir)) dirMap.set(dir, []);
             dirMap.get(dir).push(d);
         });
 
-        // Insert halos group BEFORE edge group so halos render behind everything
         halosGroup = g.insert('g', '.edges').attr('class', 'halos');
 
         dirMap.forEach(function(groupNodes, dir) {
             if (groupNodes.length < 2) return;
 
-            // Compute centroid for expansion
-            const cx = groupNodes.reduce((sum, n) => sum + n.x, 0) / groupNodes.length;
-            const cy = groupNodes.reduce((sum, n) => sum + n.y, 0) / groupNodes.length;
+            var cx = groupNodes.reduce(function(sum, n) { return sum + n.x; }, 0) / groupNodes.length;
+            var cy = groupNodes.reduce(function(sum, n) { return sum + n.y; }, 0) / groupNodes.length;
 
-            // Build hull points from node positions
-            const rawPoints = groupNodes.map(n => [n.x, n.y]);
-            const hull = d3.polygonHull(rawPoints);
+            var rawPoints = groupNodes.map(function(n) { return [n.x, n.y]; });
+            var hull = d3.polygonHull(rawPoints);
             if (!hull) return;
 
-            // Expand hull outward from centroid by 30px padding
-            const expanded = hull.map(function(pt) {
-                const dx = pt[0] - cx;
-                const dy = pt[1] - cy;
-                const len = Math.sqrt(dx * dx + dy * dy);
+            var expanded = hull.map(function(pt) {
+                var dx = pt[0] - cx;
+                var dy = pt[1] - cy;
+                var len = Math.sqrt(dx * dx + dy * dy);
                 if (len === 0) return pt;
-                return [
-                    pt[0] + (dx / len) * 30,
-                    pt[1] + (dy / len) * 30
-                ];
+                return [pt[0] + (dx / len) * 30, pt[1] + (dy / len) * 30];
             });
 
-            const pathData = 'M' + expanded.map(p => p[0] + ',' + p[1]).join('L') + 'Z';
-
             halosGroup.append('path')
-                .attr('d', pathData)
-                .attr('stroke', '#4a9eff')
+                .attr('d', 'M' + expanded.map(function(p) { return p[0] + ',' + p[1]; }).join('L') + 'Z')
+                .attr('stroke', '#7f6df2')
                 .attr('stroke-opacity', 0.15)
                 .attr('stroke-dasharray', '4 2')
-                .attr('fill', '#4a9eff')
-                .attr('fill-opacity', 0.05);
+                .attr('fill', '#7f6df2')
+                .attr('fill-opacity', 0.04);
         });
     }
 
     halosToggle.addEventListener('change', renderHalos);
 
-    // 14. Window resize handler — just resize SVG, do not re-run simulation
     window.addEventListener('resize', function() {
-        svg.attr('width', window.innerWidth)
-           .attr('height', window.innerHeight - 40);
+        svg.attr('width', window.innerWidth).attr('height', window.innerHeight - 40);
     });
 }
