@@ -111,8 +111,18 @@ Plans:
   4. Nodes are visually distinguished by symbol type via color coding (function, class, type, interface, hook, file each distinct)
   5. The force simulation completes before the graph is painted — the graph does not animate/jitter when the page loads
   6. The graph uses progressive disclosure: files are the top level, with the ability to go deeper in subsequent phases
-**Plans**: TBD
+**Plans:** 4 plans
 **UI hint**: yes
+Plans:
+**Wave 1**
+- [ ] 04-01-PLAN.md — Server crate scaffold, file-level projection, axum router, static asset handler
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 04-02-PLAN.md — Browser client: D3 force graph, pre-settled simulation, tooltips, legend panel
+- [ ] 04-03-PLAN.md — CLI wiring: async main, server startup, browser auto-open, --no-open flag
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 04-04-PLAN.md — Integration checks + visual verification checkpoint
 
 ### Phase 5: Graph Interaction
 **Goal**: Users can fully navigate and interrogate the graph — expanding file nodes to see exports, zooming and panning, searching by name, clicking to focus on a node's neighborhood, activating blast radius and dead code overlays, filtering by file/type/edge, and moving back and forward through their exploration history.
@@ -213,7 +223,7 @@ Phases execute in numeric order. Phases 7, 8, 9 all depend on Phase 3 (not each 
 | 1. Foundation | 3/3 | Complete | - |
 | 2. TypeScript Extractor | 3/5 | Gap closure | - |
 | 3. Indexer & Analysis Pipeline | 6/6 | Complete | 2026-05-02 |
-| 4. HTTP Server & Browser Shell | 0/TBD | Not started | - |
+| 4. HTTP Server & Browser Shell | 0/4 | Planning complete | - |
 | 5. Graph Interaction | 0/TBD | Not started | - |
 | 6. Watch Mode | 0/TBD | Not started | - |
 | 7. Swift Extractor | 0/TBD | Not started | - |
