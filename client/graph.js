@@ -910,6 +910,36 @@ async function loadAndRender() {
             bodyEl.appendChild(empty);
         }
 
+        // Edge legend
+        var legend = document.createElement('div');
+        legend.style.cssText = 'padding:8px 12px;font-size:10px;color:#555;';
+        var lines = [
+            ['#4a9eff', null, 'import'],
+            ['#ff6e40', null, 'call'],
+            ['#b392f0', null, 'type ref'],
+            ['#888', '4 3', 'contains (file → symbol)']
+        ];
+        lines.forEach(function(l) {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;height:20px;';
+            var svgNS = 'http://www.w3.org/2000/svg';
+            var svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('width', '24');
+            svg.setAttribute('height', '4');
+            svg.style.flexShrink = '0';
+            var line = document.createElementNS(svgNS, 'line');
+            line.setAttribute('x1', '0'); line.setAttribute('y1', '2');
+            line.setAttribute('x2', '24'); line.setAttribute('y2', '2');
+            line.setAttribute('stroke', l[0]);
+            line.setAttribute('stroke-width', '2');
+            if (l[1]) line.setAttribute('stroke-dasharray', l[1]);
+            svg.appendChild(line);
+            row.appendChild(svg);
+            row.appendChild(document.createTextNode(l[2]));
+            legend.appendChild(row);
+        });
+        bodyEl.appendChild(legend);
+
         panel.classList.add('open');
     }
 
