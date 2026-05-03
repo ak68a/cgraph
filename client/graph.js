@@ -468,20 +468,21 @@ async function loadAndRender() {
         var count = symbolNodes.length;
 
         if (mode === 'orbital') {
-            var orbitalRadius = 40;
+            var orbitalRadius = Math.max(60, count * 12);
             symbolNodes.forEach(function(sn, i) {
                 var angle = (2 * Math.PI * i) / count - Math.PI / 2;
                 sn.x = fileNode.x + orbitalRadius * Math.cos(angle);
                 sn.y = fileNode.y + orbitalRadius * Math.sin(angle);
-                // No fx/fy -- let simulation settle
+                sn.fx = sn.x;
+                sn.fy = sn.y;
             });
         } else if (mode === 'stacked') {
-            var spacing = 18;
-            var startY = fileNode.y + fileNode.radius + 12;
+            var spacing = 24;
+            var startY = fileNode.y + fileNode.radius + 16;
             symbolNodes.forEach(function(sn, i) {
                 sn.x = fileNode.x;
                 sn.y = startY + i * spacing;
-                sn.fx = fileNode.x; // fixed position for stacked mode
+                sn.fx = fileNode.x;
                 sn.fy = startY + i * spacing;
             });
         } else { // force-integrated
@@ -1492,24 +1493,43 @@ async function loadAndRender() {
     updatePillCounts();
 
     document.querySelectorAll('.pill').forEach(function(pill) {
-        pill.addEventListener('click', function() {
+        pill.addEventListener('click', function(e) {
             var filterName = this.getAttribute('data-filter');
             var mapping = pillMap[filterName];
             if (!mapping) return;
 
-            // Toggle the state
-            if (mapping.type === 'symbol') {
-                var current = filterState.symbolTypes[mapping.stateKey];
-                filterState.symbolTypes[mapping.stateKey] = !current;
-                if (mapping.stateKey === 'type') {
-                    filterState.symbolTypes['interface'] = !current;
+            if (e.altKey) {
+                // Solo: turn off all in same category, enable only this one
+                if (mapping.type === 'symbol') {
+                    var allOn = Object.keys(filterState.symbolTypes).every(function(k) { return !filterState.symbolTypes[k] || k === mapping.stateKey || (mapping.stateKey === 'type' && k === 'interface'); });
+                    var soloAlreadyActive = !filterState.symbolTypes[mapping.stateKey] ? false : allOn;
+                    Object.keys(filterState.symbolTypes).forEach(function(k) { filterState.symbolTypes[k] = soloAlreadyActive; });
+                    if (!soloAlreadyActive) {
+                        filterState.symbolTypes[mapping.stateKey] = true;
+                        if (mapping.stateKey === 'type') filterState.symbolTypes['interface'] = true;
+                    }
+                    Object.keys(symbolFilterMap).forEach(function(id) { document.getElementById(id).checked = filterState.symbolTypes[symbolFilterMap[id]]; });
+                } else {
+                    var allEdgeOn = Object.keys(filterState.edgeTypes).every(function(k) { return !filterState.edgeTypes[k] || k === mapping.stateKey; });
+                    var edgeSoloActive = !filterState.edgeTypes[mapping.stateKey] ? false : allEdgeOn;
+                    Object.keys(filterState.edgeTypes).forEach(function(k) { filterState.edgeTypes[k] = edgeSoloActive; });
+                    if (!edgeSoloActive) filterState.edgeTypes[mapping.stateKey] = true;
+                    Object.keys(edgeFilterMap).forEach(function(id) { document.getElementById(id).checked = filterState.edgeTypes[edgeFilterMap[id]]; });
                 }
-                // Sync checkbox
-                document.getElementById(mapping.checkboxId).checked = !current;
             } else {
-                var currentEdge = filterState.edgeTypes[mapping.stateKey];
-                filterState.edgeTypes[mapping.stateKey] = !currentEdge;
-                document.getElementById(mapping.checkboxId).checked = !currentEdge;
+                // Normal toggle
+                if (mapping.type === 'symbol') {
+                    var current = filterState.symbolTypes[mapping.stateKey];
+                    filterState.symbolTypes[mapping.stateKey] = !current;
+                    if (mapping.stateKey === 'type') {
+                        filterState.symbolTypes['interface'] = !current;
+                    }
+                    document.getElementById(mapping.checkboxId).checked = !current;
+                } else {
+                    var currentEdge = filterState.edgeTypes[mapping.stateKey];
+                    filterState.edgeTypes[mapping.stateKey] = !currentEdge;
+                    document.getElementById(mapping.checkboxId).checked = !currentEdge;
+                }
             }
 
             syncPillsFromState();
