@@ -70,8 +70,121 @@ async function loadAndRender() {
     var focusActive = false;
     var focusedNodeId = null;
 
-    // Stub for pushHistory — replaced by NavHistory implementation (Task 2)
-    var pushHistory = function(d) {};
+    // === Navigation History (INTR-08, D-75) ===
+
+    var historyStack = [];
+    var historyIndex = -1;
+    var MAX_HISTORY = 50;
+    var navigating = false; // guard to prevent push during back/forward
+
+    function pushHistory(targetNode) {
+        if (navigating) return;
+        // Truncate forward history on new navigation
+        historyStack = historyStack.slice(0, historyIndex + 1);
+        historyStack.push({
+            id: targetNode.id,
+            name: targetNode.name || targetNode.filename || targetNode.id.split('/').pop()
+        });
+        if (historyStack.length > MAX_HISTORY) historyStack.shift();
+        historyIndex = historyStack.length - 1;
+        updateNavUI();
+    }
+
+    function navigateBack() {
+        if (historyIndex <= 0) return;
+        navigating = true;
+        historyIndex--;
+        var entry = historyStack[historyIndex];
+        var targetNode = nodes.find(function(n) { return n.id === entry.id; });
+        if (targetNode) {
+            flyToNode(targetNode);
+            activateFocus(targetNode);
+        }
+        navigating = false;
+        updateNavUI();
+    }
+
+    function navigateForward() {
+        if (historyIndex >= historyStack.length - 1) return;
+        navigating = true;
+        historyIndex++;
+        var entry = historyStack[historyIndex];
+        var targetNode = nodes.find(function(n) { return n.id === entry.id; });
+        if (targetNode) {
+            flyToNode(targetNode);
+            activateFocus(targetNode);
+        }
+        navigating = false;
+        updateNavUI();
+    }
+
+    function updateNavUI() {
+        var btnBack = document.getElementById('btn-back');
+        var btnForward = document.getElementById('btn-forward');
+
+        btnBack.disabled = historyIndex <= 0;
+        btnForward.disabled = historyIndex >= historyStack.length - 1;
+
+        updateBreadcrumb();
+    }
+
+    function updateBreadcrumb() {
+        var bc = document.getElementById('breadcrumb');
+        if (historyStack.length === 0) {
+            bc.style.display = 'none';
+            return;
+        }
+        bc.style.display = 'flex';
+        bc.innerHTML = ''; // Safe: we rebuild with textContent below
+
+        historyStack.forEach(function(entry, idx) {
+            if (idx > 0) {
+                var sep = document.createElement('span');
+                sep.textContent = '>';
+                sep.style.color = '#666';
+                sep.style.margin = '0 4px';
+                bc.appendChild(sep);
+            }
+
+            var crumb = document.createElement('span');
+            crumb.textContent = entry.name;
+            crumb.style.cursor = 'pointer';
+            crumb.style.color = idx === historyIndex ? '#7f6df2' : '#999';
+            crumb.style.fontWeight = idx === historyIndex ? '500' : '400';
+
+            crumb.addEventListener('click', (function(i) {
+                return function() {
+                    navigating = true;
+                    historyIndex = i;
+                    var target = nodes.find(function(n) { return n.id === historyStack[i].id; });
+                    if (target) {
+                        flyToNode(target);
+                        activateFocus(target);
+                    }
+                    navigating = false;
+                    updateNavUI();
+                };
+            })(idx));
+
+            bc.appendChild(crumb);
+        });
+    }
+
+    // Wire back/forward buttons
+    document.getElementById('btn-back').addEventListener('click', navigateBack);
+    document.getElementById('btn-forward').addEventListener('click', navigateForward);
+
+    // Alt+Left / Alt+Right keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.altKey && e.key === 'ArrowLeft') {
+            e.preventDefault();
+            navigateBack();
+        }
+        if (e.altKey && e.key === 'ArrowRight') {
+            e.preventDefault();
+            navigateForward();
+        }
+    });
 
     var zoomBehavior = d3.zoom().scaleExtent([0.1, 10]).on('zoom', function(event) {
         g.attr('transform', event.transform);
@@ -570,6 +683,7 @@ async function loadAndRender() {
         // Hide tooltip when focus activates (it persists from the preceding hover)
         document.getElementById('tooltip').style.display = 'none';
         hoverActive = false;
+        pushHistory(d);
     }
 
     function clearFocus() {
