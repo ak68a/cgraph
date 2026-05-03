@@ -70,6 +70,9 @@ async function loadAndRender() {
     var focusActive = false;
     var focusedNodeId = null;
 
+    // Stub for pushHistory — replaced by NavHistory implementation (Task 2)
+    var pushHistory = function(d) {};
+
     var zoomBehavior = d3.zoom().scaleExtent([0.1, 10]).on('zoom', function(event) {
         g.attr('transform', event.transform);
         currentZoom = event.transform.k;
@@ -618,6 +621,236 @@ async function loadAndRender() {
             var tag = document.activeElement.tagName;
             if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
                 fitToScreen();
+            }
+        }
+    });
+
+    // === Header Search (INTR-01, D-73) ===
+
+    // Collect all searchable items: file nodes + symbols (from API data)
+    var allSearchableItems = [];
+    nodes.forEach(function(n) {
+        allSearchableItems.push({ id: n.id, name: n.filename || n.name, path: n.path || n.file_path, kind: 'file', _ref: n });
+    });
+    (data.symbols || []).forEach(function(s) {
+        allSearchableItems.push({ id: s.id, name: s.name, path: s.file_path, kind: s.kind, _ref: null });
+    });
+
+    function searchNodes(query) {
+        if (!query) return [];
+        var q = query.toLowerCase();
+        return allSearchableItems.filter(function(item) {
+            return item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q);
+        });
+    }
+
+    var headerSearch = document.getElementById('header-search');
+    headerSearch.addEventListener('input', function() {
+        var q = this.value.trim();
+        if (!q) {
+            // Clear highlight
+            if (!focusActive) {
+                node.style('opacity', 1).attr('fill', function(d) { return nodeColor(d); });
+                labels.style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+            }
+            return;
+        }
+        var matches = searchNodes(q);
+        var matchIds = new Set(matches.map(function(m) { return m.id; }));
+
+        // Also match file nodes if any of their symbols match
+        matches.forEach(function(m) {
+            if (m.kind !== 'file') {
+                // Find the file node for this symbol's file_path
+                var fileId = m.path;
+                matchIds.add(fileId);
+            }
+        });
+
+        node.style('opacity', function(d) { return matchIds.has(d.id) ? 1 : 0.12; })
+            .attr('fill', function(d) { return matchIds.has(d.id) ? '#7f6df2' : nodeColor(d); });
+        labels.style('opacity', function(d) {
+            if (!document.getElementById('toggle-labels').checked || currentZoom < 0.4) return 0;
+            return matchIds.has(d.id) ? 1 : 0.06;
+        });
+    });
+
+    headerSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            var q = this.value.trim();
+            if (!q) return;
+            var matches = searchNodes(q);
+            if (matches.length > 0) {
+                var target = matches[0];
+                // Find the actual node object in the nodes array
+                var targetNode = nodes.find(function(n) { return n.id === target.id; });
+                if (!targetNode && target.kind !== 'file') {
+                    // Symbol not expanded yet — expand its file first
+                    var fileNode = nodes.find(function(n) { return n.id === target.path; });
+                    if (fileNode && !expandedFiles.has(fileNode.id)) {
+                        expandFileNode(fileNode);
+                        targetNode = nodes.find(function(n) { return n.id === target.id; });
+                    }
+                }
+                if (targetNode) {
+                    flyToNode(targetNode);
+                    activateFocus(targetNode);
+                }
+            }
+            this.value = '';
+            // Reset search highlight
+            node.style('opacity', 1).attr('fill', function(d) { return nodeColor(d); });
+        }
+        if (e.key === 'Escape') {
+            this.value = '';
+            this.blur();
+            node.style('opacity', 1).attr('fill', function(d) { return nodeColor(d); });
+            labels.style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+        }
+    });
+
+    function flyToNode(d) {
+        var svgW = +svg.attr('width');
+        var svgH = +svg.attr('height');
+        var scale = 1.5;
+        var tx = svgW / 2 - scale * d.x;
+        var ty = svgH / 2 - scale * d.y;
+        svg.transition().duration(600).ease(d3.easeCubicInOut)
+            .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    }
+
+    // === Command Palette (D-73, Cmd+K) ===
+
+    var paletteOpen = false;
+    var paletteSelectedIndex = 0;
+    var paletteResults = [];
+
+    function openPalette() {
+        paletteOpen = true;
+        document.getElementById('palette-backdrop').style.display = 'block';
+        document.getElementById('command-palette').style.display = 'block';
+        var input = document.getElementById('palette-input');
+        input.value = '';
+        input.focus();
+        renderPaletteResults('');
+    }
+
+    function closePalette() {
+        paletteOpen = false;
+        document.getElementById('palette-backdrop').style.display = 'none';
+        document.getElementById('command-palette').style.display = 'none';
+        paletteResults = [];
+        paletteSelectedIndex = 0;
+    }
+
+    function renderPaletteResults(query) {
+        var container = document.getElementById('palette-results');
+        container.innerHTML = '';
+        paletteSelectedIndex = 0;
+
+        if (!query) {
+            // Show recent or top items
+            paletteResults = allSearchableItems.slice(0, 8);
+        } else {
+            paletteResults = searchNodes(query).slice(0, 8);
+        }
+
+        if (paletteResults.length === 0) {
+            var noResults = document.createElement('div');
+            noResults.className = 'palette-no-results';
+            noResults.textContent = 'No matching symbols';
+            container.appendChild(noResults);
+            return;
+        }
+
+        paletteResults.forEach(function(item, idx) {
+            var row = document.createElement('div');
+            row.className = 'palette-item' + (idx === 0 ? ' selected' : '');
+            row.setAttribute('data-idx', idx);
+
+            var nameSpan = document.createElement('span');
+            nameSpan.textContent = item.name;
+            row.appendChild(nameSpan);
+
+            var kindSpan = document.createElement('span');
+            kindSpan.className = 'palette-kind';
+            kindSpan.textContent = item.kind;
+            row.appendChild(kindSpan);
+
+            var pathSpan = document.createElement('span');
+            pathSpan.className = 'palette-path';
+            pathSpan.textContent = item.path;
+            row.appendChild(pathSpan);
+
+            row.addEventListener('click', function() {
+                selectPaletteItem(idx);
+            });
+            row.addEventListener('mouseenter', function() {
+                paletteSelectedIndex = idx;
+                updatePaletteSelection();
+            });
+
+            container.appendChild(row);
+        });
+    }
+
+    function updatePaletteSelection() {
+        var items = document.querySelectorAll('.palette-item');
+        items.forEach(function(el, i) {
+            el.classList.toggle('selected', i === paletteSelectedIndex);
+        });
+    }
+
+    function selectPaletteItem(idx) {
+        var item = paletteResults[idx];
+        if (!item) return;
+        closePalette();
+
+        var targetNode = nodes.find(function(n) { return n.id === item.id; });
+        if (!targetNode && item.kind !== 'file') {
+            var fileNode = nodes.find(function(n) { return n.id === item.path; });
+            if (fileNode && !expandedFiles.has(fileNode.id)) {
+                expandFileNode(fileNode);
+                targetNode = nodes.find(function(n) { return n.id === item.id; });
+            }
+        }
+        if (targetNode) {
+            flyToNode(targetNode);
+            activateFocus(targetNode);
+        }
+    }
+
+    document.getElementById('palette-input').addEventListener('input', function() {
+        renderPaletteResults(this.value.trim());
+    });
+
+    document.getElementById('palette-input').addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            paletteSelectedIndex = Math.min(paletteSelectedIndex + 1, paletteResults.length - 1);
+            updatePaletteSelection();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            paletteSelectedIndex = Math.max(paletteSelectedIndex - 1, 0);
+            updatePaletteSelection();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            selectPaletteItem(paletteSelectedIndex);
+        } else if (e.key === 'Escape') {
+            closePalette();
+        }
+    });
+
+    document.getElementById('palette-backdrop').addEventListener('click', closePalette);
+
+    // Global Cmd+K / Ctrl+K shortcut
+    document.addEventListener('keydown', function(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            if (paletteOpen) {
+                closePalette();
+            } else {
+                openPalette();
             }
         }
     });
