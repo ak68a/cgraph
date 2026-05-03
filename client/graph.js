@@ -628,6 +628,12 @@ async function loadAndRender() {
                 }
             }
 
+            // Blast radius mode takes priority over normal focus
+            if (blastRadiusActive) {
+                showBlastRadius(d);
+                return;
+            }
+
             // Activate focus mode
             activateFocus(d);
         });
@@ -703,6 +709,7 @@ async function loadAndRender() {
     svg.on('click', function() { if (focusActive) clearFocus(); });
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && focusActive) clearFocus();
+        if (e.key === 'Escape' && blastRadiusActive && blastRadiusSourceId) clearBlastRadius();
     });
 
     // === Fit-to-Screen (VIZN-04) ===
@@ -966,6 +973,272 @@ async function loadAndRender() {
             } else {
                 openPalette();
             }
+        }
+    });
+
+    // === Dead Code Overlay (INTR-04, D-77) ===
+
+    // Pre-compute dead code sets from API data (symbol-level IDs)
+    var deadCodeConfirmed = new Set();
+    var deadCodeSuspicious = new Set();
+    (data.symbols || []).forEach(function(s) {
+        if (s.is_dead_code && s.dead_code_confidence === 'confirmed') {
+            deadCodeConfirmed.add(s.id);
+        } else if (s.is_dead_code && s.dead_code_confidence === 'suspicious') {
+            deadCodeSuspicious.add(s.id);
+        }
+    });
+
+    // Pre-compute dead code counts per file for file-level overlay
+    // Maps file_path -> { confirmed: number, suspicious: number }
+    var deadCodeByFile = {};
+    (data.symbols || []).forEach(function(s) {
+        if (!s.is_dead_code) return;
+        if (!deadCodeByFile[s.file_path]) deadCodeByFile[s.file_path] = { confirmed: 0, suspicious: 0 };
+        if (s.dead_code_confidence === 'confirmed') {
+            deadCodeByFile[s.file_path].confirmed++;
+        } else if (s.dead_code_confidence === 'suspicious') {
+            deadCodeByFile[s.file_path].suspicious++;
+        }
+    });
+
+    var deadCodeActive = false;
+    var badgeGroup = null;
+
+    function showDeadCodeOverlay() {
+        deadCodeActive = true;
+
+        // Create badge group if not exists (after nodes group for Z-order)
+        if (!badgeGroup) {
+            badgeGroup = g.append('g').attr('class', 'badges');
+        }
+        badgeGroup.selectAll('*').remove();
+
+        // Apply border styling to nodes:
+        // - Symbol nodes: match by symbol ID in deadCodeConfirmed/deadCodeSuspicious sets
+        // - File nodes (not expanded): match by file path in deadCodeByFile map
+        node.attr('stroke', function(d) {
+            if (d._isSymbol) {
+                if (deadCodeConfirmed.has(d.id) || deadCodeSuspicious.has(d.id)) return '#f87171';
+                return 'none';
+            }
+            // File node: highlight if it has dead children AND is NOT currently expanded
+            if (!expandedFiles.has(d.id) && deadCodeByFile[d.id]) return '#f87171';
+            return 'none';
+        })
+        .attr('stroke-width', function(d) {
+            if (d._isSymbol) {
+                if (deadCodeConfirmed.has(d.id)) return 3;
+                if (deadCodeSuspicious.has(d.id)) return 2;
+                return 0;
+            }
+            if (!expandedFiles.has(d.id) && deadCodeByFile[d.id]) {
+                return deadCodeByFile[d.id].confirmed > 0 ? 3 : 2;
+            }
+            return 0;
+        })
+        .attr('stroke-dasharray', function(d) {
+            if (d._isSymbol && deadCodeSuspicious.has(d.id)) return '3 2';
+            if (!d._isSymbol && !expandedFiles.has(d.id) && deadCodeByFile[d.id]) {
+                // Dashed if file has ONLY suspicious dead code, solid if any confirmed
+                if (deadCodeByFile[d.id].confirmed === 0 && deadCodeByFile[d.id].suspicious > 0) return '3 2';
+            }
+            return null;
+        })
+        .attr('stroke-opacity', function(d) {
+            if (d._isSymbol && deadCodeSuspicious.has(d.id)) return 0.5;
+            if (!d._isSymbol && !expandedFiles.has(d.id) && deadCodeByFile[d.id]) {
+                if (deadCodeByFile[d.id].confirmed === 0) return 0.5;
+            }
+            return 1;
+        });
+
+        // Add badges to dead code nodes
+        nodes.forEach(function(d) {
+            if (d._isSymbol) {
+                if (!deadCodeConfirmed.has(d.id) && !deadCodeSuspicious.has(d.id)) return;
+                var isConfirmed = deadCodeConfirmed.has(d.id);
+                var badge = badgeGroup.append('g')
+                    .attr('class', 'dead-badge')
+                    .attr('data-node-id', d.id);
+
+                badge.append('circle')
+                    .attr('r', 5)
+                    .attr('fill', isConfirmed ? '#f87171' : 'rgba(248,113,113,0.5)')
+                    .attr('stroke', 'none');
+
+                badge.append('text')
+                    .attr('text-anchor', 'middle')
+                    .attr('dy', '0.35em')
+                    .attr('fill', '#fff')
+                    .attr('font-size', '8px')
+                    .attr('font-weight', '700')
+                    .attr('pointer-events', 'none')
+                    .text(isConfirmed ? 'x' : '?');
+            } else {
+                // File node: show count badge if unexpanded and has dead children
+                if (expandedFiles.has(d.id) || !deadCodeByFile[d.id]) return;
+                var counts = deadCodeByFile[d.id];
+                var total = counts.confirmed + counts.suspicious;
+                var badge = badgeGroup.append('g')
+                    .attr('class', 'dead-badge')
+                    .attr('data-node-id', d.id);
+
+                badge.append('circle')
+                    .attr('r', 7)
+                    .attr('fill', counts.confirmed > 0 ? '#f87171' : 'rgba(248,113,113,0.5)')
+                    .attr('stroke', 'none');
+
+                badge.append('text')
+                    .attr('text-anchor', 'middle')
+                    .attr('dy', '0.35em')
+                    .attr('fill', '#fff')
+                    .attr('font-size', '8px')
+                    .attr('font-weight', '700')
+                    .attr('pointer-events', 'none')
+                    .text(total);
+            }
+        });
+
+        // Update badge positions
+        updateBadgePositions();
+
+        // Show dead code stats
+        var statsEl = document.getElementById('dead-code-stats');
+        var countEl = document.getElementById('dead-code-count');
+        countEl.textContent = deadCodeConfirmed.size + ' confirmed, ' + deadCodeSuspicious.size + ' suspicious';
+        statsEl.style.display = 'flex';
+    }
+
+    function hideDeadCodeOverlay() {
+        deadCodeActive = false;
+        node.attr('stroke', 'none').attr('stroke-width', 0).attr('stroke-dasharray', null).attr('stroke-opacity', 1);
+        if (badgeGroup) badgeGroup.selectAll('*').remove();
+        document.getElementById('dead-code-stats').style.display = 'none';
+    }
+
+    function updateBadgePositions() {
+        if (!badgeGroup) return;
+        badgeGroup.selectAll('.dead-badge').each(function() {
+            var nodeId = d3.select(this).attr('data-node-id');
+            var d = nodes.find(function(n) { return n.id === nodeId; });
+            if (d) {
+                var r = (d.radius || 6) * nodeSizeScale;
+                d3.select(this).attr('transform', 'translate(' + (d.x + r * 0.7) + ',' + (d.y - r * 0.7) + ')');
+            }
+        });
+    }
+
+    // Hook badge position updates into the simulation tick
+    var origUpdatePositions = updatePositions;
+    updatePositions = function() {
+        origUpdatePositions();
+        if (deadCodeActive) updateBadgePositions();
+    };
+    // Re-register tick handler
+    simulation.on('tick', updatePositions);
+
+    // Re-apply overlay after expand/collapse to update file-level vs symbol-level highlighting
+    var origRebuildSimulation = rebuildSimulation;
+    rebuildSimulation = function() {
+        origRebuildSimulation();
+        if (deadCodeActive) {
+            // Re-apply overlay after DOM rejoins with new node selection
+            setTimeout(function() { showDeadCodeOverlay(); }, 50);
+        }
+    };
+
+    document.getElementById('toggle-dead-code').addEventListener('change', function() {
+        if (this.checked) {
+            showDeadCodeOverlay();
+        } else {
+            hideDeadCodeOverlay();
+        }
+    });
+
+    // === Blast Radius Mode (INTR-03, D-78, D-82) ===
+
+    var blastRadiusActive = false;
+    var blastRadiusSourceId = null;
+
+    function computeBlastRadius(nodeId) {
+        // BFS over edges to find all transitive dependents (who depends on nodeId?)
+        // An edge from A -> B means A depends on B (import/call).
+        // Blast radius of B = all nodes that directly or transitively depend on B.
+        // Reverse: from nodeId, traverse edges where nodeId is the TARGET, collect sources.
+        var dependents = new Set();
+        var queue = [nodeId];
+        var allEdgesForTraversal = edges.concat(symbolEdges);
+
+        while (queue.length > 0) {
+            var current = queue.shift();
+            allEdgesForTraversal.forEach(function(e) {
+                var src = typeof e.source === 'object' ? e.source.id : e.source;
+                var tgt = typeof e.target === 'object' ? e.target.id : e.target;
+                // If edge points TO current, the source DEPENDS on current
+                if (tgt === current && !dependents.has(src)) {
+                    dependents.add(src);
+                    queue.push(src);
+                }
+            });
+        }
+        return dependents;
+    }
+
+    function showBlastRadius(sourceNode) {
+        blastRadiusSourceId = sourceNode.id;
+        var dependents = computeBlastRadius(sourceNode.id);
+
+        node.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            .attr('fill', function(n) {
+                if (n.id === sourceNode.id) return '#7f6df2';
+                if (dependents.has(n.id)) return '#a882ff';
+                return nodeColor(n);
+            })
+            .style('opacity', function(n) {
+                if (n.id === sourceNode.id || dependents.has(n.id)) return 1;
+                return 0.15;
+            });
+
+        labels.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            .style('opacity', function(n) {
+                if (!document.getElementById('toggle-labels').checked || currentZoom < 0.4) return 0;
+                return (n.id === sourceNode.id || dependents.has(n.id)) ? 1 : 0.04;
+            });
+
+        link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
+            .attr('stroke', function(e) {
+                var si = typeof e.source === 'object' ? e.source.id : e.source;
+                var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                return (dependents.has(si) || si === sourceNode.id) && (dependents.has(ti) || ti === sourceNode.id)
+                    ? '#a882ff' : '#444';
+            })
+            .attr('stroke-opacity', function(e) {
+                var si = typeof e.source === 'object' ? e.source.id : e.source;
+                var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                return (dependents.has(si) || si === sourceNode.id) && (dependents.has(ti) || ti === sourceNode.id)
+                    ? 0.6 : 0.04;
+            });
+    }
+
+    function clearBlastRadius() {
+        blastRadiusSourceId = null;
+        node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .attr('fill', function(n) { return nodeColor(n); })
+            .style('opacity', 1);
+        labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .style('opacity', !document.getElementById('toggle-labels').checked ? 0 : currentZoom < 0.4 ? 0 : 1);
+        link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
+            .attr('stroke', '#444').attr('stroke-opacity', 0.25);
+    }
+
+    document.getElementById('toggle-blast-radius').addEventListener('change', function() {
+        blastRadiusActive = this.checked;
+        if (blastRadiusActive) {
+            document.getElementById('blast-radius-prompt').style.display = 'flex';
+        } else {
+            document.getElementById('blast-radius-prompt').style.display = 'none';
+            clearBlastRadius();
         }
     });
 
