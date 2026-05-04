@@ -823,13 +823,15 @@ async function loadAndRender() {
     function wireNodeEvents(sel) {
         sel.on('mouseenter', function(event, d) {
             if (focusActive && d.id === focusedNodeId) return;
+            var focusConnectedSet = focusActive ? (adjacency.get(focusedNodeId) || new Set()) : null;
+            var isNeighborOrChild = focusActive && (d._parentId === focusedNodeId || (focusConnectedSet && focusConnectedSet.has(d.id)));
+            if (focusActive && !isNeighborOrChild) return;
             if (focusActive) {
                 // Hover a neighbor/child during focus — show its connections
                 hoverActive = true;
                 var connected = adjacency.get(d.id) || new Set();
                 var focusSet = new Set([focusedNodeId, d.id]);
                 connected.forEach(function(cid) { focusSet.add(cid); });
-                var focusConnectedSet = adjacency.get(focusedNodeId) || new Set();
 
                 node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                     .style('opacity', function(n) {
@@ -2100,7 +2102,11 @@ async function loadAndRender() {
             if (!focusNode) return edgeMarker(e);
             var si = typeof e.source === 'object' ? e.source.id : e.source;
             var ti = typeof e.target === 'object' ? e.target.id : e.target;
-            if (si === focusNode.id || ti === focusNode.id) return useTypedFocus ? edgeMarker(e) : 'url(#arrow-active)';
+            var srcN = nodes.find(function(n) { return n.id === si; });
+            var tgtN = nodes.find(function(n) { return n.id === ti; });
+            var isFocusEdge = si === focusNode.id || ti === focusNode.id ||
+                (srcN && srcN._parentId === focusNode.id) || (tgtN && tgtN._parentId === focusNode.id);
+            if (isFocusEdge) return useTypedFocus ? edgeMarker(e) : 'url(#arrow-active)';
             return 'none';
         })
         .style('opacity', function(e) {
