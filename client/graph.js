@@ -152,12 +152,7 @@ async function loadAndRender() {
 
             el.style.display = 'flex';
         } else {
-            var label = viewLevel === 'symbols' ? 'Symbols' : 'Files';
-            var seg = document.createElement('span');
-            seg.className = 'bc-seg active';
-            seg.textContent = label;
-            el.appendChild(seg);
-            el.style.display = 'flex';
+            el.style.display = 'none';
         }
         updateContextualControls();
     }
@@ -650,9 +645,32 @@ async function loadAndRender() {
         document.getElementById('lens-imports').classList.toggle('active', lens === 'imports');
         document.getElementById('lens-all-edges').classList.toggle('active', lens === 'all-edges');
 
-        if (viewLevel === 'files' && !focusActive) {
+        if (viewLevel === 'files') {
+            // Rebuild file-level edges with the new lens
+            var expandedSymbolIds = new Set();
+            nodes.forEach(function(n) { if (n._isSymbol) expandedSymbolIds.add(n.id); });
+
             edges.length = 0;
             getActiveFileEdges().forEach(function(d) { edges.push(Object.assign({}, d)); });
+
+            // Re-add symbol-level edges for any expanded files
+            if (expandedFiles.size > 0) {
+                symbolEdges.forEach(function(se) {
+                    var src = typeof se.source === 'object' ? se.source.id : se.source;
+                    var tgt = typeof se.target === 'object' ? se.target.id : se.target;
+                    if (expandedSymbolIds.has(src) && expandedSymbolIds.has(tgt)) {
+                        edges.push({ source: src, target: tgt, edge_type: se.edge_type });
+                    }
+                });
+                // Re-add parent-child edges
+                expandedFiles.forEach(function(fileId) {
+                    nodes.forEach(function(n) {
+                        if (n._parentId === fileId) {
+                            edges.push({ source: fileId, target: n.id, edge_type: 'parent_child', _isParentEdge: true });
+                        }
+                    });
+                });
+            }
 
             adjacency.clear();
             nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
