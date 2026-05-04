@@ -195,7 +195,7 @@ async function loadAndRender() {
         var lensEl = document.getElementById('lens-toggle');
         var stateEl = document.getElementById('state-indicator');
         if (lensEl) {
-            var showLens = viewLevel === 'files';
+            var showLens = viewLevel === 'files' && expandedFiles.size === 0;
             lensEl.style.display = showLens ? 'flex' : 'none';
             if (stateEl) stateEl.style.left = showLens ? '210px' : '56px';
         }
@@ -827,46 +827,58 @@ async function loadAndRender() {
             var isNeighborOrChild = focusActive && (d._parentId === focusedNodeId || (focusConnectedSet && focusConnectedSet.has(d.id)));
             if (focusActive && !isNeighborOrChild) return;
             if (focusActive) {
-                // Hover a neighbor/child during focus — show its connections
+                // Hover a neighbor/child during focus — only highlight edges to/from focused node and its children
                 hoverActive = true;
-                var connected = adjacency.get(d.id) || new Set();
-                var focusSet = new Set([focusedNodeId, d.id]);
-                connected.forEach(function(cid) { focusSet.add(cid); });
+                var focusFamily = new Set([focusedNodeId]);
+                nodes.forEach(function(n) { if (n._parentId === focusedNodeId) focusFamily.add(n.id); });
+
+                var relevantNodes = new Set([d.id, focusedNodeId]);
+                edges.forEach(function(e) {
+                    var si = typeof e.source === 'object' ? e.source.id : e.source;
+                    var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                    if ((si === d.id && focusFamily.has(ti)) || (ti === d.id && focusFamily.has(si))) {
+                        relevantNodes.add(si);
+                        relevantNodes.add(ti);
+                    }
+                });
 
                 node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                     .style('opacity', function(n) {
-                        if (n.id === d.id || n.id === focusedNodeId) return 1;
-                        if (connected.has(n.id) || focusConnectedSet.has(n.id)) return 0.7;
+                        if (relevantNodes.has(n.id)) return 1;
+                        if (focusConnectedSet.has(n.id) || n._parentId === focusedNodeId) return 0.3;
                         return 0.08;
                     });
                 labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                     .style('opacity', function(n) {
                         if (!labelVisible(n) || currentZoom < 0.4) return 0;
-                        if (n.id === d.id || n.id === focusedNodeId) return 1;
-                        if (connected.has(n.id) || focusConnectedSet.has(n.id)) return 0.7;
+                        if (relevantNodes.has(n.id)) return 1;
+                        if (focusConnectedSet.has(n.id) || n._parentId === focusedNodeId) return 0.2;
                         return 0.04;
                     });
-                var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols';
+                var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols' || expandedFiles.size > 0;
                 link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                     .attr('stroke', function(e) {
                         if (e._isParentEdge) return '#666';
                         var si = typeof e.source === 'object' ? e.source.id : e.source;
                         var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                        if (si === d.id || ti === d.id) return useTypedColors ? edgeColor(e) : '#a882ff';
+                        var isRelevantEdge = (si === d.id && focusFamily.has(ti)) || (ti === d.id && focusFamily.has(si));
+                        if (isRelevantEdge) return useTypedColors ? edgeColor(e) : '#a882ff';
                         return edgeColor(e);
                     })
                     .attr('marker-end', function(e) {
                         if (e._isParentEdge) return 'none';
                         var si = typeof e.source === 'object' ? e.source.id : e.source;
                         var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                        if (si === d.id || ti === d.id) return useTypedColors ? edgeMarker(e) : 'url(#arrow-active)';
+                        var isRelevantEdge = (si === d.id && focusFamily.has(ti)) || (ti === d.id && focusFamily.has(si));
+                        if (isRelevantEdge) return useTypedColors ? edgeMarker(e) : 'url(#arrow-active)';
                         return 'none';
                     })
                     .style('opacity', function(e) {
                         var si = typeof e.source === 'object' ? e.source.id : e.source;
                         var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                        if (si === d.id || ti === d.id) return 0.7;
-                        if (si === focusedNodeId || ti === focusedNodeId) return 0.15;
+                        var isRelevantEdge = (si === d.id && focusFamily.has(ti)) || (ti === d.id && focusFamily.has(si));
+                        if (isRelevantEdge) return 0.7;
+                        if (e._isParentEdge && focusFamily.has(si) && focusFamily.has(ti)) return 0.15;
                         return 0.04;
                     });
 
@@ -906,7 +918,7 @@ async function loadAndRender() {
                     if (!labelVisible(n) || currentZoom < 0.4) return 0;
                     return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
                 });
-            var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols';
+            var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols' || expandedFiles.size > 0;
             link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .attr('stroke', function(e) {
                     if (e._isParentEdge) return '#666';
@@ -2087,7 +2099,7 @@ async function loadAndRender() {
             return 1;
         });
 
-        var useTypedFocus = fileLens === 'all-edges' || viewLevel === 'symbols';
+        var useTypedFocus = fileLens === 'all-edges' || viewLevel === 'symbols' || expandedFiles.size > 0;
         link.attr('stroke', function(e) {
             if (e._isParentEdge) return focusNode ? '#666' : '#444';
             if (!focusNode) return edgeColor(e);
