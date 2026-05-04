@@ -52,7 +52,7 @@ async function loadAndRender() {
     var svg = d3.select('#graph').append('svg').attr('width', width).attr('height', height);
     var defs = svg.append('defs');
 
-    var edgeColors = { import: '#4a9eff', call: '#ff6e40', type_ref: '#b392f0', re_export: '#4a9eff', parent_child: '#444' };
+    var edgeColors = { import: '#a882ff', call: '#2dd4bf', type_ref: '#fbbf24', re_export: '#a882ff', parent_child: '#444' };
     function edgeColor(e) { return edgeColors[e.edge_type] || '#444'; }
 
     function addArrowMarker(id, color) {
@@ -80,47 +80,126 @@ async function loadAndRender() {
     var focusActive = false;
     var focusedNodeId = null;
 
-    // === State Indicator ===
+    // === State Indicator (Breadcrumb Navigator) ===
 
     function updateStateIndicator() {
         var el = document.getElementById('state-indicator');
-        var modeEl = document.getElementById('state-mode');
-        var targetEl = document.getElementById('state-target');
-        var hintEl = document.getElementById('state-hint');
-        var iconEl = document.getElementById('state-icon');
+        el.innerHTML = '';
 
         if (typeof blastRadiusActive !== 'undefined' && blastRadiusActive && blastRadiusSourceId) {
             var bNode = nodes.find(function(n) { return n.id === blastRadiusSourceId; });
             var bName = bNode ? (bNode.filename || bNode.name || bNode.id.split('/').pop()) : '';
-            iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8a838" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>';
-            modeEl.textContent = 'Blast radius';
-            modeEl.style.color = '#e8a838';
-            targetEl.textContent = bName;
-            hintEl.textContent = 'Esc to exit';
+            el.innerHTML =
+                '<span class="bc-seg" style="color:#e8a838;">' +
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a838" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>' +
+                ' Blast radius</span>' +
+                '<span class="bc-sep">›</span>' +
+                '<span class="bc-seg" style="color:#ddd;">' + bName + '</span>' +
+                '<button class="bc-close" title="Exit">×</button>';
+            el.querySelector('.bc-close').addEventListener('click', function() {
+                clearBlastRadius();
+                updateStateIndicator();
+            });
             el.style.display = 'flex';
         } else if (focusActive && focusedNodeId) {
             var fNode = nodes.find(function(n) { return n.id === focusedNodeId; });
             var fName = fNode ? (fNode.filename || fNode.name || fNode.id.split('/').pop()) : '';
             var isExpanded = fNode && !fNode._isSymbol && expandedFiles.has(fNode.id);
-            iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7f6df2" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>';
-            modeEl.textContent = isExpanded ? 'Focus · Expanded' : 'Focus';
-            modeEl.style.color = '#7f6df2';
-            targetEl.textContent = fName;
-            hintEl.textContent = 'Esc to exit';
+
+            var curLayer = isExpanded ? 'symbols' : 'file';
+
+            function bcSeg(label, layerId) {
+                var s = document.createElement('span');
+                s.className = 'bc-seg' + (curLayer === layerId ? ' active' : '');
+                s.textContent = label;
+                return s;
+            }
+            function bcSep() {
+                var s = document.createElement('span');
+                s.className = 'bc-sep';
+                s.textContent = '›';
+                return s;
+            }
+
+            var filesBtn = bcSeg('Files', 'files');
+            filesBtn.addEventListener('click', function() { clearFocus(); });
+            el.appendChild(filesBtn);
+            el.appendChild(bcSep());
+
+            var fileBtn = bcSeg('Focus', 'file');
+            fileBtn.addEventListener('click', function() {
+                if (isExpanded) { collapseFileNode(focusedNodeId); updateStateIndicator(); }
+            });
+            el.appendChild(fileBtn);
+            el.appendChild(bcSep());
+
+            var symBtn = bcSeg('Symbols', 'symbols');
+            symBtn.addEventListener('click', function() {
+                if (!isExpanded) {
+                    var fn = nodes.find(function(n) { return n.id === focusedNodeId; });
+                    if (fn) expandFileNode(fn);
+                    updateStateIndicator();
+                }
+            });
+            el.appendChild(symBtn);
+
+            var closeBtn = document.createElement('button');
+            closeBtn.className = 'bc-close';
+            closeBtn.title = 'Exit (Esc)';
+            closeBtn.textContent = '×';
+            closeBtn.addEventListener('click', function() { clearFocus(); });
+            el.appendChild(closeBtn);
+
             el.style.display = 'flex';
         } else {
-            el.style.display = 'none';
+            var label = viewLevel === 'symbols' ? 'Symbols' : 'Files';
+            var seg = document.createElement('span');
+            seg.className = 'bc-seg active';
+            seg.textContent = label;
+            el.appendChild(seg);
+            el.style.display = 'flex';
         }
+        updateContextualControls();
     }
 
-    document.getElementById('state-exit').addEventListener('click', function() {
-        if (typeof blastRadiusActive !== 'undefined' && blastRadiusActive && blastRadiusSourceId) {
-            clearBlastRadius();
-        } else if (focusActive) {
-            clearFocus();
+    // === Contextual Controls ===
+
+    function updateContextualControls() {
+        var hasExpanded = expandedFiles.size > 0;
+        var hasFocus = focusActive && focusedNodeId;
+        var isSymbolView = viewLevel === 'symbols';
+        var showSymbolFilters = hasExpanded || isSymbolView;
+        var showTypedEdgeFilters = showSymbolFilters || fileLens === 'all-edges';
+
+        // Dark room + show neighbors: only useful when focused
+        var drRow = document.getElementById('toggle-dark-room').closest('.ctrl-row');
+        if (drRow) drRow.classList.toggle('disabled', !hasFocus);
+        var nbRow = document.getElementById('toggle-neighbors').closest('.ctrl-row');
+        if (nbRow) nbRow.classList.toggle('disabled', !hasFocus);
+
+        // Symbol type filters: only useful when symbols are visible (expanded or symbol view)
+        ['filter-fn', 'filter-class', 'filter-type', 'filter-hook', 'filter-enum'].forEach(function(id) {
+            var row = document.getElementById(id).closest('.ctrl-row');
+            if (row) row.classList.toggle('disabled', !showSymbolFilters);
+        });
+        var symHeader = document.getElementById('toggle-all-symbols').closest('div');
+        if (symHeader) symHeader.classList.toggle('disabled', !showSymbolFilters);
+
+        // Call and type_ref edge filters: enabled with symbols OR all-edges lens
+        ['filter-edge-call', 'filter-edge-typeref'].forEach(function(id) {
+            var row = document.getElementById(id).closest('.ctrl-row');
+            if (row) row.classList.toggle('disabled', !showTypedEdgeFilters);
+        });
+
+        // Lens toggle: only visible at file level
+        var lensEl = document.getElementById('lens-toggle');
+        var stateEl = document.getElementById('state-indicator');
+        if (lensEl) {
+            var showLens = viewLevel === 'files';
+            lensEl.style.display = showLens ? 'flex' : 'none';
+            if (stateEl) stateEl.style.left = showLens ? '210px' : '56px';
         }
-        updateStateIndicator();
-    });
+    }
 
     // === Navigation History (INTR-08, D-75) ===
 
@@ -207,7 +286,19 @@ async function loadAndRender() {
 
     // Separate file-level and symbol-level edges
     var allEdgeData = data.edges.map(function(d) { return Object.assign({}, d); });
-    var edges = allEdgeData.filter(function(e) { return e.source.indexOf('::') === -1 && e.target.indexOf('::') === -1; });
+    var allFileEdges = allEdgeData.filter(function(e) { return e.source.indexOf('::') === -1 && e.target.indexOf('::') === -1; });
+    var fileEdgesImportOnly = [];
+    var seenFilePairs = {};
+    allFileEdges.forEach(function(e) {
+        var key = e.source + '|' + e.target;
+        if (!seenFilePairs[key]) {
+            seenFilePairs[key] = true;
+            fileEdgesImportOnly.push(Object.assign({}, e, { edge_type: 'import' }));
+        }
+    });
+    var fileEdgesTyped = allFileEdges.map(function(d) { return Object.assign({}, d); });
+    var fileLens = 'imports';
+    var edges = fileEdgesImportOnly.map(function(d) { return Object.assign({}, d); });
     var symbolEdges = data.edges.filter(function(e) { return e.source.indexOf('::') !== -1 || e.target.indexOf('::') !== -1; }).map(function(d) { return Object.assign({}, d); });
 
     // Store all symbols grouped by file for expand
@@ -246,6 +337,10 @@ async function loadAndRender() {
         if (d._isSymbol) return NODE_COLORS[d.kind] || '#555';
         return '#555';
     }
+    function focusColor(d) {
+        if (d._isSymbol) return NODE_COLORS[d.kind] || '#7f6df2';
+        return '#7f6df2';
+    }
 
     var expandMode = 'orbital';
     var expandedFiles = new Set(); // Set of file node IDs currently expanded
@@ -282,7 +377,7 @@ async function loadAndRender() {
 
     var linkGroup = g.append('g').attr('class', 'edges');
     var link = linkGroup.selectAll('line').data(edges).join('line')
-        .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
+        .attr('stroke', edgeColor).style('opacity', 0.25).attr('marker-end', edgeMarker);
 
     var nodeGroup = g.append('g').attr('class', 'nodes');
     var node = nodeGroup.selectAll('circle')
@@ -554,7 +649,7 @@ async function loadAndRender() {
                 function(enter) {
                     return enter.append('line')
                         .attr('stroke', function(d) { return d._isParentEdge ? '#444' : edgeColor(d); })
-                        .attr('stroke-opacity', function(d) { return d._isParentEdge ? 0.15 : 0.25; })
+                        .style('opacity', function(d) { return d._isParentEdge ? 0.15 : 0.25; })
                         .attr('stroke-dasharray', function(d) { return d._isParentEdge ? '2 2' : null; })
                         .attr('marker-end', function(d) { return d._isParentEdge ? 'none' : edgeMarker(d); });
                 },
@@ -566,6 +661,37 @@ async function loadAndRender() {
     }
 
     // === Level Toggle (Files / Symbols) ===
+
+    function getActiveFileEdges() {
+        return fileLens === 'all-edges' ? fileEdgesTyped : fileEdgesImportOnly;
+    }
+
+    function switchFileLens(lens) {
+        if (fileLens === lens) return;
+        fileLens = lens;
+
+        document.getElementById('lens-imports').classList.toggle('active', lens === 'imports');
+        document.getElementById('lens-all-edges').classList.toggle('active', lens === 'all-edges');
+
+        if (viewLevel === 'files' && !focusActive) {
+            edges.length = 0;
+            getActiveFileEdges().forEach(function(d) { edges.push(Object.assign({}, d)); });
+
+            adjacency.clear();
+            nodes.forEach(function(n) { adjacency.set(n.id, new Set()); });
+            edges.forEach(function(e) {
+                var si = typeof e.source === 'object' ? e.source.id : e.source;
+                var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                if (adjacency.has(si)) adjacency.get(si).add(ti);
+                if (adjacency.has(ti)) adjacency.get(ti).add(si);
+            });
+
+            rebuildSimulation();
+            applyFilters();
+        }
+        updateContextualControls();
+        rebuildPills();
+    }
 
     function switchToFileLevel() {
         if (viewLevel === 'files') return;
@@ -580,7 +706,7 @@ async function loadAndRender() {
         nodes.length = 0;
         fileNodes.forEach(function(d) { nodes.push(Object.assign({}, d)); });
         edges.length = 0;
-        fileEdges.forEach(function(d) { edges.push(Object.assign({}, d)); });
+        getActiveFileEdges().forEach(function(d) { edges.push(Object.assign({}, d)); });
 
         // Rebuild adjacency
         adjacency.clear();
@@ -603,6 +729,7 @@ async function loadAndRender() {
 
         rebuildSimulation();
         applyFilters();
+        rebuildPills();
         updateStateIndicator();
 
         document.getElementById('level-files').classList.add('active');
@@ -666,6 +793,7 @@ async function loadAndRender() {
 
         rebuildSimulation();
         applyFilters();
+        rebuildPills();
         updateStateIndicator();
 
         document.getElementById('level-files').classList.remove('active');
@@ -674,6 +802,9 @@ async function loadAndRender() {
 
     document.getElementById('level-files').addEventListener('click', switchToFileLevel);
     document.getElementById('level-symbols').addEventListener('click', switchToSymbolLevel);
+
+    document.getElementById('lens-imports').addEventListener('click', function() { switchFileLens('imports'); });
+    document.getElementById('lens-all-edges').addEventListener('click', function() { switchFileLens('all-edges'); });
 
     // Expand mode change handler
     document.getElementById('expand-mode').addEventListener('change', function() {
@@ -691,7 +822,72 @@ async function loadAndRender() {
 
     function wireNodeEvents(sel) {
         sel.on('mouseenter', function(event, d) {
-            if (focusActive) return;
+            if (focusActive && d.id === focusedNodeId) return;
+            if (focusActive) {
+                // Hover a neighbor/child during focus — show its connections
+                hoverActive = true;
+                var connected = adjacency.get(d.id) || new Set();
+                var focusSet = new Set([focusedNodeId, d.id]);
+                connected.forEach(function(cid) { focusSet.add(cid); });
+                var focusConnectedSet = adjacency.get(focusedNodeId) || new Set();
+
+                node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
+                    .style('opacity', function(n) {
+                        if (n.id === d.id || n.id === focusedNodeId) return 1;
+                        if (connected.has(n.id) || focusConnectedSet.has(n.id)) return 0.7;
+                        return 0.08;
+                    });
+                labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
+                    .style('opacity', function(n) {
+                        if (!labelVisible(n) || currentZoom < 0.4) return 0;
+                        if (n.id === d.id || n.id === focusedNodeId) return 1;
+                        if (connected.has(n.id) || focusConnectedSet.has(n.id)) return 0.7;
+                        return 0.04;
+                    });
+                var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols';
+                link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
+                    .attr('stroke', function(e) {
+                        if (e._isParentEdge) return '#666';
+                        var si = typeof e.source === 'object' ? e.source.id : e.source;
+                        var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                        if (si === d.id || ti === d.id) return useTypedColors ? edgeColor(e) : '#a882ff';
+                        return edgeColor(e);
+                    })
+                    .attr('marker-end', function(e) {
+                        if (e._isParentEdge) return 'none';
+                        var si = typeof e.source === 'object' ? e.source.id : e.source;
+                        var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                        if (si === d.id || ti === d.id) return useTypedColors ? edgeMarker(e) : 'url(#arrow-active)';
+                        return 'none';
+                    })
+                    .style('opacity', function(e) {
+                        var si = typeof e.source === 'object' ? e.source.id : e.source;
+                        var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                        if (si === d.id || ti === d.id) return 0.7;
+                        if (si === focusedNodeId || ti === focusedNodeId) return 0.15;
+                        return 0.04;
+                    });
+
+                var tooltip = document.getElementById('tooltip');
+                if (d._isSymbol) {
+                    tooltip.querySelector('.tooltip-path').textContent = d.file_path;
+                    tooltip.querySelector('.tooltip-exports').textContent = d.kind;
+                    tooltip.querySelector('.tooltip-edges').textContent = d.name;
+                } else {
+                    var counts = d.export_counts || {};
+                    var kinds = [['functions', counts.functions || 0], ['classes', counts.classes || 0],
+                        ['types', counts.types || 0], ['interfaces', counts.interfaces || 0],
+                        ['hooks', counts.hooks || 0], ['enums', counts.enums || 0]];
+                    var parts = kinds.filter(function(k) { return k[1] > 0; }).map(function(k) { return k[1] + ' ' + k[0]; });
+                    tooltip.querySelector('.tooltip-path').textContent = d.path || d.file_path;
+                    tooltip.querySelector('.tooltip-exports').textContent = parts.length > 0 ? parts.join(', ') : 'no exports';
+                    tooltip.querySelector('.tooltip-edges').textContent = (d.incoming || 0) + ' incoming + ' + (d.outgoing || 0) + ' outgoing';
+                }
+                tooltip.style.display = 'block';
+                tooltip.style.left = (event.pageX + 12) + 'px';
+                tooltip.style.top = event.pageY + 'px';
+                return;
+            }
             hoverActive = true;
             var connected = adjacency.get(d.id) || new Set();
             node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
@@ -708,23 +904,26 @@ async function loadAndRender() {
                     if (!labelVisible(n) || currentZoom < 0.4) return 0;
                     return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
                 });
+            var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols';
             link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .attr('stroke', function(e) {
                     if (e._isParentEdge) return '#666';
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
                     var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? '#a882ff' : edgeColor(e);
-                })
-                .attr('stroke-opacity', function(e) {
-                    var si = typeof e.source === 'object' ? e.source.id : e.source;
-                    var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? 0.7 : 0.04;
+                    if (si === d.id || ti === d.id) return useTypedColors ? edgeColor(e) : '#a882ff';
+                    return edgeColor(e);
                 })
                 .attr('marker-end', function(e) {
                     if (e._isParentEdge) return 'none';
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
                     var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'none';
+                    if (si === d.id || ti === d.id) return useTypedColors ? edgeMarker(e) : 'url(#arrow-active)';
+                    return 'none';
+                })
+                .style('opacity', function(e) {
+                    var si = typeof e.source === 'object' ? e.source.id : e.source;
+                    var ti = typeof e.target === 'object' ? e.target.id : e.target;
+                    return (si === d.id || ti === d.id) ? 0.7 : 0.04;
                 });
 
             // Tooltip
@@ -758,7 +957,12 @@ async function loadAndRender() {
         });
 
         sel.on('mouseleave', function() {
-            if (focusActive) return;
+            if (focusActive) {
+                hoverActive = false;
+                document.getElementById('tooltip').style.display = 'none';
+                applyFilters();
+                return;
+            }
             hoverActive = false;
             node.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
                 .attr('fill', function(n) { return nodeColor(n); })
@@ -766,7 +970,7 @@ async function loadAndRender() {
             labels.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
                 .style('opacity', defaultLabelOpacity);
             link.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
-                .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
+                .attr('stroke', edgeColor).attr('marker-end', edgeMarker).style('opacity', 0.25);
             document.getElementById('tooltip').style.display = 'none';
         });
 
@@ -806,62 +1010,33 @@ async function loadAndRender() {
     function activateFocus(d) {
         focusActive = true;
         focusedNodeId = d.id;
-        var connected = adjacency.get(d.id) || new Set();
 
-        node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
-            .attr('fill', function(n) {
-                if (n.id === d.id) return '#7f6df2';
-                if (connected.has(n.id)) return nodeColor(n);
-                return nodeColor(n);
-            })
-            .style('opacity', function(n) {
-                return (n.id === d.id || connected.has(n.id)) ? 1 : 0.1;
-            });
+        node.attr('fill', function(n) {
+            if (n.id === d.id) return '#7f6df2';
+            return nodeColor(n);
+        });
 
-        labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
-            .style('opacity', function(n) {
-                if (!labelVisible(n) || currentZoom < 0.4) return 0;
-                return (n.id === d.id || connected.has(n.id)) ? 1 : 0.04;
-            });
+        if (centeredMode) flyToNode(d, true);
 
-        link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
-            .attr('stroke', function(e) {
-                if (e._isParentEdge) return '#666';
-                var si = typeof e.source === 'object' ? e.source.id : e.source;
-                var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (si === d.id || ti === d.id) ? '#a882ff' : edgeColor(e);
-            })
-            .attr('stroke-opacity', function(e) {
-                var si = typeof e.source === 'object' ? e.source.id : e.source;
-                var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (si === d.id || ti === d.id) ? 0.7 : 0.04;
-            })
-            .attr('marker-end', function(e) {
-                if (e._isParentEdge) return 'none';
-                var si = typeof e.source === 'object' ? e.source.id : e.source;
-                var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                return (si === d.id || ti === d.id) ? 'url(#arrow-active)' : 'none';
-            });
-
+        applyFilters();
         updateStateIndicator();
+        updateFitButton();
         showDetailPanel(d);
-        // Hide tooltip when focus activates (it persists from the preceding hover)
         document.getElementById('tooltip').style.display = 'none';
         hoverActive = false;
         pushHistory(d);
     }
 
     function clearFocus() {
+        Array.from(expandedFiles).forEach(function(fid) { collapseFileNode(fid); });
         focusActive = false;
         focusedNodeId = null;
-        node.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
-            .attr('fill', function(n) { return nodeColor(n); })
-            .style('opacity', 1);
-        labels.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
-            .style('opacity', defaultLabelOpacity);
-        link.transition('highlight').duration(FADE_OUT).ease(d3.easeCubicIn)
-            .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
+        centeredMode = false;
+        node.attr('fill', function(n) { return nodeColor(n); });
+        link.attr('stroke-opacity', null);
+        applyFilters();
         updateStateIndicator();
+        updateFitButton();
         hideDetailPanel();
     }
 
@@ -1045,9 +1220,9 @@ async function loadAndRender() {
         var legend = document.createElement('div');
         legend.style.cssText = 'padding:8px 12px;font-size:10px;color:#555;';
         var lines = [
-            ['#4a9eff', null, 'import'],
-            ['#ff6e40', null, 'call'],
-            ['#b392f0', null, 'type ref'],
+            ['#a882ff', null, 'import'],
+            ['#2dd4bf', null, 'call'],
+            ['#fbbf24', null, 'type ref'],
             ['#888', '4 3', 'contains (file → symbol)']
         ];
         lines.forEach(function(l) {
@@ -1190,6 +1365,7 @@ async function loadAndRender() {
         clearFocus();
     });
 
+
     // Exit focus on Escape or background click
     svg.on('click', function() { if (focusActive) clearFocus(); });
     document.addEventListener('keydown', function(e) {
@@ -1219,14 +1395,49 @@ async function loadAndRender() {
             .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
     }
 
-    document.getElementById('btn-fit').addEventListener('click', fitToScreen);
+    var fitBtn = document.getElementById('btn-fit');
+    var centeredMode = false;
+    var fitIconExpand = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+    var fitIconShrink = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+
+    function updateFitButton() {
+        if (centeredMode) {
+            fitBtn.innerHTML = fitIconShrink;
+            fitBtn.title = 'Switch to overview (F)';
+            fitBtn.style.borderColor = '#7f6df2';
+            fitBtn.style.color = '#7f6df2';
+        } else {
+            fitBtn.innerHTML = fitIconExpand;
+            fitBtn.title = 'Fit to screen (F)';
+            fitBtn.style.borderColor = '#444';
+            fitBtn.style.color = '#999';
+        }
+    }
+
+    function toggleFitMode() {
+        if (centeredMode) {
+            centeredMode = false;
+            fitToScreen();
+        } else {
+            if (focusActive && focusedNodeId) {
+                centeredMode = true;
+                var d = nodes.find(function(n) { return n.id === focusedNodeId; });
+                if (d) flyToNode(d);
+            } else {
+                fitToScreen();
+            }
+        }
+        updateFitButton();
+    }
+
+    fitBtn.addEventListener('click', toggleFitMode);
 
     // F key shortcut (when no input focused)
     document.addEventListener('keydown', function(e) {
         if (e.key === 'f' || e.key === 'F') {
             var tag = document.activeElement.tagName;
             if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
-                fitToScreen();
+                toggleFitMode();
             }
         }
     });
@@ -1315,10 +1526,10 @@ async function loadAndRender() {
         }
     });
 
-    function flyToNode(d) {
+    function flyToNode(d, useCurrentZoom) {
         var svgW = +svg.attr('width');
         var svgH = +svg.attr('height');
-        var scale = 1.5;
+        var scale = useCurrentZoom ? currentZoom : 1.5;
         var tx = svgW / 2 - scale * d.x;
         var ty = svgH / 2 - scale * d.y;
         svg.transition().duration(600).ease(d3.easeCubicInOut)
@@ -1711,6 +1922,7 @@ async function loadAndRender() {
                 return 0.04;
             });
 
+        var useTypedBlast = fileLens === 'all-edges' || viewLevel === 'symbols';
         link.transition().duration(FADE_IN).ease(d3.easeCubicOut)
             .attr('stroke', function(e) {
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -1718,7 +1930,8 @@ async function loadAndRender() {
                 var sd = depthMap.get(si), td = depthMap.get(ti);
                 var srcIn = si === sourceNode.id || sd !== undefined;
                 var tgtIn = ti === sourceNode.id || td !== undefined;
-                return srcIn && tgtIn ? '#a882ff' : edgeColor(e);
+                if (srcIn && tgtIn) return useTypedBlast ? edgeColor(e) : '#a882ff';
+                return edgeColor(e);
             })
             .attr('stroke-opacity', function(e) {
                 var si = typeof e.source === 'object' ? e.source.id : e.source;
@@ -1735,7 +1948,8 @@ async function loadAndRender() {
                 var sd = depthMap.get(si), td = depthMap.get(ti);
                 var srcIn = si === sourceNode.id || sd !== undefined;
                 var tgtIn = ti === sourceNode.id || td !== undefined;
-                return srcIn && tgtIn ? 'url(#arrow-active)' : 'none';
+                if (srcIn && tgtIn) return useTypedBlast ? edgeMarker(e) : 'url(#arrow-active)';
+                return 'none';
             });
 
         var promptEl = document.getElementById('blast-radius-prompt');
@@ -1752,7 +1966,7 @@ async function loadAndRender() {
         labels.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
             .style('opacity', defaultLabelOpacity);
         link.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
-            .attr('stroke', edgeColor).attr('stroke-opacity', 0.25).attr('marker-end', edgeMarker);
+            .attr('stroke', edgeColor).style('opacity', 0.25).attr('marker-end', edgeMarker);
         updateStateIndicator();
     }
 
@@ -1771,6 +1985,7 @@ async function loadAndRender() {
     var filterState = {
         dirQuery: '',
         darkRoom: false,
+        showNeighbors: true,
         symbolTypes: {
             'function': true, 'class': true, 'type': true,
             'interface': true, 'hook': true, 'enum': true
@@ -1789,7 +2004,14 @@ async function loadAndRender() {
         return Object.keys(filterState.symbolTypes).some(function(k) { return !filterState.symbolTypes[k]; });
     }
 
-    function isNodeVisible(d) {
+    function isNodeVisible(d, skipFocusExempt) {
+        // Focused node is always visible
+        if (!skipFocusExempt && focusActive && focusedNodeId && d.id === focusedNodeId) return true;
+        // Expanded child symbols of focused node: visible if they match symbol type filter
+        if (!skipFocusExempt && focusActive && focusedNodeId && d._isSymbol && d._parentId === focusedNodeId) {
+            return symbolKindMatch(d.kind);
+        }
+
         var dirMatch = !filterState.dirQuery ||
             (d.path || d.file_path || '').toLowerCase().includes(filterState.dirQuery);
 
@@ -1826,36 +2048,60 @@ async function loadAndRender() {
     function applyFilters() {
         var focusNode = focusActive && focusedNodeId ? nodes.find(function(n) { return n.id === focusedNodeId; }) : null;
         var focusConnected = focusNode ? (adjacency.get(focusNode.id) || new Set()) : null;
-        var dr = filterState.darkRoom || hasSymbolTypeFilter();
+        var dr = filterState.darkRoom;
+
+        function isFocusRelevant(d) {
+            if (!focusNode) return true;
+            if (d.id === focusNode.id) return true;
+            if (d._parentId === focusNode.id) return true;
+            if (!filterState.showNeighbors) return false;
+            if (focusConnected) return focusConnected.has(d.id);
+            return true;
+        }
+
+        // Re-apply focus fill colors
+        if (focusNode) {
+            node.attr('fill', function(n) {
+                if (n.id === focusNode.id) return '#7f6df2';
+                if (isFocusRelevant(n)) return nodeColor(n);
+                return nodeColor(n);
+            });
+        }
 
         node.style('opacity', function(d) {
             if (!isNodeVisible(d)) return dr ? 0 : 0.08;
-            if (focusNode) return (d.id === focusNode.id || focusConnected.has(d.id)) ? 1 : 0.1;
+            if (focusNode) return isFocusRelevant(d) ? 1 : (dr ? 0 : 0.1);
             return 1;
         }).style('pointer-events', function(d) {
-            return isNodeVisible(d) ? null : 'none';
+            if (!isNodeVisible(d)) return 'none';
+            if (focusNode && dr && !isFocusRelevant(d)) return 'none';
+            return null;
         });
 
         labels.style('opacity', function(d) {
             if (!labelVisible(d) || currentZoom < 0.4) return 0;
             if (!isNodeVisible(d)) return dr ? 0 : 0.04;
-            if (focusNode) return (d.id === focusNode.id || focusConnected.has(d.id)) ? 1 : 0.04;
+            if (focusNode) return isFocusRelevant(d) ? 1 : (dr ? 0 : 0.04);
             return 1;
         });
 
+        var useTypedFocus = fileLens === 'all-edges' || viewLevel === 'symbols';
         link.attr('stroke', function(e) {
             if (e._isParentEdge) return focusNode ? '#666' : '#444';
             if (!focusNode) return edgeColor(e);
             var si = typeof e.source === 'object' ? e.source.id : e.source;
             var ti = typeof e.target === 'object' ? e.target.id : e.target;
-            return (si === focusNode.id || ti === focusNode.id) ? '#a882ff' : edgeColor(e);
+            if (si === focusNode.id || ti === focusNode.id) return useTypedFocus ? edgeColor(e) : '#a882ff';
+            return edgeColor(e);
         })
+        .attr('stroke-opacity', null)
         .attr('marker-end', function(e) {
             if (e._isParentEdge) return 'none';
             if (!focusNode) return edgeMarker(e);
             var si = typeof e.source === 'object' ? e.source.id : e.source;
             var ti = typeof e.target === 'object' ? e.target.id : e.target;
-            return (si === focusNode.id || ti === focusNode.id) ? 'url(#arrow-active)' : 'none';
+            if (si === focusNode.id || ti === focusNode.id) return useTypedFocus ? edgeMarker(e) : 'url(#arrow-active)';
+            return 'none';
         })
         .style('opacity', function(e) {
             if (!isEdgeVisible(e)) return 0;
@@ -1865,9 +2111,15 @@ async function loadAndRender() {
             var tgtN = nodes.find(function(n) { return n.id === ti; });
             if (srcN && !isNodeVisible(srcN)) return 0;
             if (tgtN && !isNodeVisible(tgtN)) return 0;
-            if (focusNode) return (si === focusNode.id || ti === focusNode.id) ? 0.7 : 0.04;
+            if (focusNode && !filterState.showNeighbors) {
+                var srcChild = srcN && srcN._parentId === focusNode.id;
+                var tgtChild = tgtN && tgtN._parentId === focusNode.id;
+                if (!srcChild && !tgtChild) return 0;
+            }
+            if (focusNode) return (si === focusNode.id || ti === focusNode.id || (srcN && srcN._parentId === focusNode.id) || (tgtN && tgtN._parentId === focusNode.id)) ? 0.7 : (dr ? 0 : 0.04);
             return 0.25;
-        }).style('pointer-events', function(e) {
+        })
+        .style('pointer-events', function(e) {
             return isEdgeVisible(e) ? null : 'none';
         });
         updatePillCounts();
@@ -1915,6 +2167,7 @@ async function loadAndRender() {
             if (kindKey === 'type') {
                 filterState.symbolTypes['interface'] = this.checked;
             }
+            syncMasterToggles();
             syncPillsFromState();
             updateSoloButtons();
             applyFilters();
@@ -1932,11 +2185,46 @@ async function loadAndRender() {
         var edgeKey = edgeFilterMap[checkboxId];
         document.getElementById(checkboxId).addEventListener('change', function() {
             filterState.edgeTypes[edgeKey] = this.checked;
+            syncMasterToggles();
             syncPillsFromState();
             updateSoloButtons();
             applyFilters();
         });
     });
+
+    // Master toggle: all symbol types
+    document.getElementById('toggle-all-symbols').addEventListener('change', function() {
+        var on = this.checked;
+        Object.keys(filterState.symbolTypes).forEach(function(k) { filterState.symbolTypes[k] = on; });
+        Object.keys(symbolFilterMap).forEach(function(id) { document.getElementById(id).checked = on; });
+        syncPillsFromState();
+        updateSoloButtons();
+        applyFilters();
+    });
+
+    // Master toggle: all edge types
+    document.getElementById('toggle-all-edges').addEventListener('change', function() {
+        var on = this.checked;
+        Object.keys(filterState.edgeTypes).forEach(function(k) { filterState.edgeTypes[k] = on; });
+        Object.keys(edgeFilterMap).forEach(function(id) { document.getElementById(id).checked = on; });
+        syncPillsFromState();
+        updateSoloButtons();
+        applyFilters();
+    });
+
+    function syncMasterToggles() {
+        var allSymOn = Object.keys(filterState.symbolTypes).every(function(k) { return filterState.symbolTypes[k]; });
+        var anySymOn = Object.keys(filterState.symbolTypes).some(function(k) { return filterState.symbolTypes[k]; });
+        var symToggle = document.getElementById('toggle-all-symbols');
+        symToggle.checked = anySymOn;
+        symToggle.indeterminate = anySymOn && !allSymOn;
+
+        var allEdgeOn = Object.keys(filterState.edgeTypes).every(function(k) { return filterState.edgeTypes[k]; });
+        var anyEdgeOn = Object.keys(filterState.edgeTypes).some(function(k) { return filterState.edgeTypes[k]; });
+        var edgeToggle = document.getElementById('toggle-all-edges');
+        edgeToggle.checked = anyEdgeOn;
+        edgeToggle.indeterminate = anyEdgeOn && !allEdgeOn;
+    }
 
     // Solo buttons in filter panel
     function updateSoloButtons() {
@@ -1983,6 +2271,7 @@ async function loadAndRender() {
                     document.getElementById(id).checked = filterState.edgeTypes[edgeFilterMap[id]];
                 });
             }
+            syncMasterToggles();
             updateSoloButtons();
             syncPillsFromState();
             applyFilters();
@@ -1996,9 +2285,9 @@ async function loadAndRender() {
         { stateKey: 'type', label: 'Types', checkboxId: 'filter-type', type: 'symbol', color: '#fbbf24' },
         { stateKey: 'hook', label: 'Hooks', checkboxId: 'filter-hook', type: 'symbol', color: '#a78bfa' },
         { stateKey: 'enum', label: 'Enums', checkboxId: 'filter-enum', type: 'symbol', color: '#4ade80' },
-        { stateKey: 'import', label: 'Imports', checkboxId: 'filter-edge-import', type: 'edge', color: '#4a9eff' },
-        { stateKey: 'call', label: 'Calls', checkboxId: 'filter-edge-call', type: 'edge', color: '#ff6e40' },
-        { stateKey: 'type_ref', label: 'Type refs', checkboxId: 'filter-edge-typeref', type: 'edge', color: '#b392f0' }
+        { stateKey: 'import', label: 'Imports', checkboxId: 'filter-edge-import', type: 'edge', color: '#a882ff' },
+        { stateKey: 'call', label: 'Calls', checkboxId: 'filter-edge-call', type: 'edge', color: '#2dd4bf' },
+        { stateKey: 'type_ref', label: 'Type refs', checkboxId: 'filter-edge-typeref', type: 'edge', color: '#fbbf24' }
     ];
 
     var quickFiltersEl = document.getElementById('quick-filters');
@@ -2010,7 +2299,9 @@ async function loadAndRender() {
                 return k === def.stateKey;
             }).length;
         } else {
-            return allEdgeData.filter(function(e) {
+            var edgeSource = viewLevel === 'symbols' ? symbolEdges :
+                             fileLens === 'all-edges' ? fileEdgesTyped : fileEdgesImportOnly;
+            return edgeSource.filter(function(e) {
                 return (e.edge_type || 'import') === def.stateKey;
             }).length;
         }
@@ -2068,6 +2359,7 @@ async function loadAndRender() {
                         document.getElementById(def.checkboxId).checked = !curEdge;
                     }
                 }
+                syncMasterToggles();
                 rebuildPills();
                 applyFilters();
             });
@@ -2080,6 +2372,7 @@ async function loadAndRender() {
     function updatePillCounts() { rebuildPills(); }
 
     rebuildPills();
+    updateContextualControls();
 
     // === Panel controls ===
 
@@ -2090,6 +2383,8 @@ async function loadAndRender() {
         document.getElementById('toggle-orphans').checked = true;
         document.getElementById('toggle-dark-room').checked = false;
         filterState.darkRoom = false;
+        document.getElementById('toggle-neighbors').checked = true;
+        filterState.showNeighbors = true;
 
         // Reset symbol type filters
         Object.keys(symbolFilterMap).forEach(function(id) {
@@ -2104,6 +2399,7 @@ async function loadAndRender() {
         filterState.edgeTypes = { 'import': true, 'call': true, 'type_ref': true };
         filterState.dirQuery = '';
 
+        syncMasterToggles();
         syncPillsFromState();
 
         node.style('display', null).style('opacity', 1).style('pointer-events', null);
@@ -2117,6 +2413,12 @@ async function loadAndRender() {
         var q = e.target.value.toLowerCase();
         node.style('opacity', function(d) { return !q || (d.path || d.file_path || '').toLowerCase().includes(q) ? 1 : 0.1; });
         labels.style('opacity', function(d) { return !q || (d.path || d.file_path || '').toLowerCase().includes(q) ? 1 : 0.05; });
+    });
+
+    // Filters: show neighbors
+    document.getElementById('toggle-neighbors').addEventListener('change', function() {
+        filterState.showNeighbors = this.checked;
+        applyFilters();
     });
 
     // Filters: orphans

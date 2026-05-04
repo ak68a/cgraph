@@ -195,12 +195,10 @@ pub fn file_level_projection(
                 } else {
                     format!("{}/{}", parent, basename)
                 };
-                let truncated = truncate_str(&display, 20);
-                filename_map.insert(file_path.clone(), truncated);
+                filename_map.insert(file_path.clone(), display);
             }
         } else {
-            let truncated = truncate_str(basename, 20);
-            filename_map.insert(paths[0].clone(), truncated);
+            filename_map.insert(paths[0].clone(), basename.clone());
         }
     }
 
@@ -233,7 +231,7 @@ pub fn file_level_projection(
             let filename = filename_map
                 .get(&file_path)
                 .cloned()
-                .unwrap_or_else(|| truncate_str(&file_path, 20));
+                .unwrap_or_else(|| file_path.clone());
             let incoming = incoming_counts.get(&file_path).copied().unwrap_or(0);
             let outgoing = outgoing_counts.get(&file_path).copied().unwrap_or(0);
             FileNode {
@@ -315,20 +313,29 @@ pub fn enriched_projection(
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
                 let display = if parent.is_empty() { basename.clone() } else { format!("{}/{}", parent, basename) };
-                filename_map.insert(file_path.clone(), truncate_str(&display, 20));
+                filename_map.insert(file_path.clone(), display);
             }
         } else {
-            filename_map.insert(paths[0].clone(), truncate_str(basename, 20));
+            filename_map.insert(paths[0].clone(), basename.clone());
         }
     }
 
     let mut file_edges_set: HashSet<(String, String)> = HashSet::new();
+    let mut file_edges_typed: HashSet<(String, String, String)> = HashSet::new();
     for edge_idx in graph.graph.edge_indices() {
         if let Some((src_idx, tgt_idx)) = graph.graph.edge_endpoints(edge_idx) {
             let src_file = graph.graph[src_idx].file_path.clone();
             let tgt_file = graph.graph[tgt_idx].file_path.clone();
             if src_file != tgt_file {
-                file_edges_set.insert((src_file, tgt_file));
+                file_edges_set.insert((src_file.clone(), tgt_file.clone()));
+                let edge_kind = &graph.graph[edge_idx];
+                let et = match edge_kind {
+                    EdgeKind::Import   => "import",
+                    EdgeKind::Call     => "call",
+                    EdgeKind::TypeRef  => "type_ref",
+                    EdgeKind::ReExport => "re_export",
+                }.to_string();
+                file_edges_typed.insert((src_file, tgt_file, et));
             }
         }
     }
@@ -346,7 +353,7 @@ pub fn enriched_projection(
             let total = counts.total;
             let radius = compute_radius(total);
             let filename = filename_map.get(&file_path).cloned()
-                .unwrap_or_else(|| truncate_str(&file_path, 20));
+                .unwrap_or_else(|| file_path.clone());
             let incoming = incoming_counts.get(&file_path).copied().unwrap_or(0);
             let outgoing = outgoing_counts.get(&file_path).copied().unwrap_or(0);
             FileNode { id: file_path.clone(), path: file_path, filename, export_counts: counts, radius, incoming, outgoing }
@@ -416,12 +423,12 @@ pub fn enriched_projection(
         }
     }
 
-    // Deduplicated file-level edges (source/target are file paths, edge_type "import")
-    for (src_file, tgt_file) in file_edges_set {
+    // Deduplicated file-level edges with preserved edge types
+    for (src_file, tgt_file, edge_type) in file_edges_typed {
         edges.push(TypedEdge {
             source: src_file,
             target: tgt_file,
-            edge_type: "import".to_string(),
+            edge_type,
         });
     }
 
@@ -434,12 +441,6 @@ fn compute_radius(total_exports: u32) -> f32 {
 }
 
 /// Truncate a string to at most `max_chars` characters.
-fn truncate_str(s: &str, max_chars: usize) -> String {
-    let mut chars = s.chars();
-    let truncated: String = chars.by_ref().take(max_chars).collect();
-    truncated
-}
-
 // ─── Port Discovery ───────────────────────────────────────────────────────────
 
 /// Find an available TCP port starting from `start`, binding to 127.0.0.1 (T-04-02).
