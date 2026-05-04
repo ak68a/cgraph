@@ -342,7 +342,6 @@ async function loadAndRender() {
         return '#7f6df2';
     }
 
-    var expandMode = 'orbital';
     var expandedFiles = new Set(); // Set of file node IDs currently expanded
 
     var simulation = d3.forceSimulation(nodes)
@@ -433,10 +432,7 @@ async function loadAndRender() {
         .on('drag', function(event, d) { d.fx = event.x; d.fy = event.y; })
         .on('end', function(event, d) {
             if (!event.active) simulation.alphaTarget(0);
-            // Keep stacked nodes fixed
-            if (!(d._isSymbol && expandMode === 'stacked')) {
-                d.fx = null; d.fy = null;
-            }
+            d.fx = null; d.fy = null;
             d3.select(this).style('cursor', 'grab');
         });
     node.call(drag);
@@ -565,34 +561,15 @@ async function loadAndRender() {
     }
 
     function positionSymbols(fileNode, symbolNodes) {
-        var mode = expandMode;
         var count = symbolNodes.length;
-
-        if (mode === 'orbital') {
-            var orbitalRadius = Math.max(60, count * 12);
-            symbolNodes.forEach(function(sn, i) {
-                var angle = (2 * Math.PI * i) / count - Math.PI / 2;
-                sn.x = fileNode.x + orbitalRadius * Math.cos(angle);
-                sn.y = fileNode.y + orbitalRadius * Math.sin(angle);
-                sn.fx = sn.x;
-                sn.fy = sn.y;
-            });
-        } else if (mode === 'stacked') {
-            var spacing = 24;
-            var startY = fileNode.y + fileNode.radius + 16;
-            symbolNodes.forEach(function(sn, i) {
-                sn.x = fileNode.x;
-                sn.y = startY + i * spacing;
-                sn.fx = fileNode.x;
-                sn.fy = startY + i * spacing;
-            });
-        } else { // force-integrated
-            // Start near parent, let simulation position them
-            symbolNodes.forEach(function(sn) {
-                sn.x = fileNode.x + (Math.random() - 0.5) * 30;
-                sn.y = fileNode.y + (Math.random() - 0.5) * 30;
-            });
-        }
+        var orbitalRadius = Math.max(60, count * 12);
+        symbolNodes.forEach(function(sn, i) {
+            var angle = (2 * Math.PI * i) / count - Math.PI / 2;
+            sn.x = fileNode.x + orbitalRadius * Math.cos(angle);
+            sn.y = fileNode.y + orbitalRadius * Math.sin(angle);
+            sn.fx = sn.x;
+            sn.fy = sn.y;
+        });
     }
 
     function rebuildSimulation() {
@@ -807,16 +784,6 @@ async function loadAndRender() {
     document.getElementById('lens-all-edges').addEventListener('click', function() { switchFileLens('all-edges'); });
 
     // Expand mode change handler
-    document.getElementById('expand-mode').addEventListener('change', function() {
-        expandMode = this.value;
-        // Re-expand currently expanded nodes in new mode
-        var expanded = Array.from(expandedFiles);
-        expanded.forEach(function(fileId) { collapseFileNode(fileId); });
-        expanded.forEach(function(fileId) {
-            var fileNode = nodes.find(function(n) { return n.id === fileId; });
-            if (fileNode) expandFileNode(fileNode);
-        });
-    });
 
     // === FocusMode (D-74) ===
 
@@ -842,18 +809,21 @@ async function loadAndRender() {
                     }
                 });
 
+                var dr = filterState.darkRoom;
                 node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                     .style('opacity', function(n) {
+                        if (!isNodeVisible(n)) return 0;
                         if (relevantNodes.has(n.id)) return 1;
                         if (focusConnectedSet.has(n.id) || n._parentId === focusedNodeId) return 0.3;
-                        return 0.08;
+                        return dr ? 0 : 0.08;
                     });
                 labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                     .style('opacity', function(n) {
                         if (!labelVisible(n) || currentZoom < 0.4) return 0;
+                        if (!isNodeVisible(n)) return 0;
                         if (relevantNodes.has(n.id)) return 1;
                         if (focusConnectedSet.has(n.id) || n._parentId === focusedNodeId) return 0.2;
-                        return 0.04;
+                        return dr ? 0 : 0.04;
                     });
                 var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols' || expandedFiles.size > 0;
                 link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
@@ -879,7 +849,7 @@ async function loadAndRender() {
                         var isRelevantEdge = (si === d.id && focusFamily.has(ti)) || (ti === d.id && focusFamily.has(si));
                         if (isRelevantEdge) return 0.7;
                         if (e._isParentEdge && focusFamily.has(si) && focusFamily.has(ti)) return 0.15;
-                        return 0.04;
+                        return dr ? 0 : 0.04;
                     });
 
                 var tooltip = document.getElementById('tooltip');
@@ -904,6 +874,7 @@ async function loadAndRender() {
             }
             hoverActive = true;
             var connected = adjacency.get(d.id) || new Set();
+            var dr = filterState.darkRoom;
             node.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .attr('fill', function(n) {
                     if (n.id === d.id) return '#7f6df2';
@@ -911,12 +882,14 @@ async function loadAndRender() {
                     return nodeColor(n);
                 })
                 .style('opacity', function(n) {
-                    return (n.id === d.id || connected.has(n.id)) ? 1 : 0.12;
+                    if (!isNodeVisible(n)) return 0;
+                    return (n.id === d.id || connected.has(n.id)) ? 1 : (dr ? 0 : 0.12);
                 });
             labels.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
                 .style('opacity', function(n) {
                     if (!labelVisible(n) || currentZoom < 0.4) return 0;
-                    return (n.id === d.id || connected.has(n.id)) ? 1 : 0.06;
+                    if (!isNodeVisible(n)) return 0;
+                    return (n.id === d.id || connected.has(n.id)) ? 1 : (dr ? 0 : 0.06);
                 });
             var useTypedColors = fileLens === 'all-edges' || viewLevel === 'symbols' || expandedFiles.size > 0;
             link.transition('highlight').duration(FADE_IN).ease(d3.easeCubicOut)
@@ -937,7 +910,7 @@ async function loadAndRender() {
                 .style('opacity', function(e) {
                     var si = typeof e.source === 'object' ? e.source.id : e.source;
                     var ti = typeof e.target === 'object' ? e.target.id : e.target;
-                    return (si === d.id || ti === d.id) ? 0.7 : 0.04;
+                    return (si === d.id || ti === d.id) ? 0.7 : (dr ? 0 : 0.04);
                 });
 
             // Tooltip
@@ -1228,6 +1201,70 @@ async function loadAndRender() {
                 empty.textContent = 'No connections';
             }
             bodyEl.appendChild(empty);
+        }
+
+        // Blast radius section
+        if (blastRadiusDepthMap && blastRadiusSourceId === d.id && blastRadiusDepthMap.size > 0) {
+            var brSection = document.createElement('div');
+            brSection.style.cssText = 'border-bottom:1px solid #333;padding:4px 0;';
+
+            var brHeader = document.createElement('div');
+            brHeader.className = 'detail-section-title';
+            brHeader.style.color = '#c084fc';
+            brHeader.textContent = 'Blast radius (' + blastRadiusDepthMap.size + ')';
+            brSection.appendChild(brHeader);
+
+            var byDepth = {};
+            blastRadiusDepthMap.forEach(function(depth, nodeId) {
+                if (!byDepth[depth]) byDepth[depth] = [];
+                byDepth[depth].push(nodeId);
+            });
+
+            Object.keys(byDepth).sort(function(a, b) { return +a - +b; }).forEach(function(depth) {
+                var depthLabel = document.createElement('div');
+                depthLabel.style.cssText = 'padding:3px 12px 2px;font-size:9px;color:' + blastColorForDepth(+depth) + ';text-transform:uppercase;letter-spacing:0.5px;';
+                depthLabel.textContent = +depth === 1 ? 'direct (1 hop)' : depth + ' hops';
+                brSection.appendChild(depthLabel);
+
+                byDepth[depth].sort(function(a, b) {
+                    return findNodeName(a).localeCompare(findNodeName(b));
+                }).forEach(function(nodeId) {
+                    var row = document.createElement('div');
+                    row.className = 'detail-item';
+                    row.setAttribute('data-node-id', nodeId);
+
+                    var dot = document.createElement('span');
+                    dot.className = 'detail-dot';
+                    dot.style.background = blastColorForDepth(+depth);
+                    row.appendChild(dot);
+
+                    var nameSpan = document.createElement('span');
+                    nameSpan.textContent = findNodeName(nodeId);
+                    nameSpan.title = nodeId;
+                    row.appendChild(nameSpan);
+
+                    row.addEventListener('mouseenter', function() {
+                        node.filter(function(n) { return n.id === nodeId; })
+                            .transition('panel-hover').duration(150)
+                            .attr('r', function(n) { return (n.radius || 8) * nodeSizeScale * 1.6; })
+                            .attr('stroke', '#fff').attr('stroke-width', 2);
+                    });
+                    row.addEventListener('mouseleave', function() {
+                        node.filter(function(n) { return n.id === nodeId; })
+                            .transition('panel-hover').duration(200)
+                            .attr('r', function(n) { return (n.radius || 8) * nodeSizeScale; })
+                            .attr('stroke', 'none').attr('stroke-width', 0);
+                    });
+                    row.addEventListener('click', function() {
+                        var targetNode = nodes.find(function(n) { return n.id === nodeId; });
+                        if (targetNode) showBlastRadius(targetNode);
+                    });
+
+                    brSection.appendChild(row);
+                });
+            });
+
+            bodyEl.appendChild(brSection);
         }
 
         // Edge legend
@@ -1674,6 +1711,25 @@ async function loadAndRender() {
 
     document.getElementById('palette-backdrop').addEventListener('click', closePalette);
 
+    // Hotkey help (? key)
+    var hotkeyOpen = false;
+    function toggleHotkeyHelp() {
+        hotkeyOpen = !hotkeyOpen;
+        document.getElementById('hotkey-help').style.display = hotkeyOpen ? 'block' : 'none';
+        document.getElementById('hotkey-backdrop').style.display = hotkeyOpen ? 'block' : 'none';
+    }
+    document.getElementById('hotkey-backdrop').addEventListener('click', toggleHotkeyHelp);
+    document.getElementById('hotkey-close').addEventListener('click', toggleHotkeyHelp);
+    document.addEventListener('keydown', function(e) {
+        if (e.key === '?' && !e.metaKey && !e.ctrlKey) {
+            var tag = document.activeElement.tagName;
+            if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+                toggleHotkeyHelp();
+            }
+        }
+        if (e.key === 'Escape' && hotkeyOpen) toggleHotkeyHelp();
+    });
+
     // Global Cmd+K / Ctrl+K shortcut
     document.addEventListener('keydown', function(e) {
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -1777,14 +1833,17 @@ async function loadAndRender() {
                     .attr('fill', isConfirmed ? '#f87171' : 'rgba(248,113,113,0.5)')
                     .attr('stroke', 'none');
 
-                badge.append('text')
-                    .attr('text-anchor', 'middle')
-                    .attr('dy', '0.35em')
-                    .attr('fill', '#fff')
-                    .attr('font-size', '8px')
-                    .attr('font-weight', '700')
-                    .attr('pointer-events', 'none')
-                    .text(isConfirmed ? 'x' : '?');
+                if (isConfirmed) {
+                    badge.append('line').attr('x1', -1.8).attr('y1', -1.8).attr('x2', 1.8).attr('y2', 1.8)
+                        .attr('stroke', '#fff').attr('stroke-width', 1.2).attr('stroke-linecap', 'round').attr('pointer-events', 'none');
+                    badge.append('line').attr('x1', 1.8).attr('y1', -1.8).attr('x2', -1.8).attr('y2', 1.8)
+                        .attr('stroke', '#fff').attr('stroke-width', 1.2).attr('stroke-linecap', 'round').attr('pointer-events', 'none');
+                } else {
+                    badge.append('text')
+                        .attr('text-anchor', 'middle').attr('dy', '0.35em')
+                        .attr('fill', '#fff').attr('font-size', '8px').attr('font-weight', '700')
+                        .attr('pointer-events', 'none').text('?');
+                }
             } else {
                 // File node: show count badge if unexpanded and has dead children
                 if (expandedFiles.has(d.id) || !deadCodeByFile[d.id]) return;
@@ -1870,6 +1929,7 @@ async function loadAndRender() {
 
     var blastRadiusActive = false;
     var blastRadiusSourceId = null;
+    var blastRadiusDepthMap = null;
 
     function computeBlastRadius(nodeId) {
         // BFS returning Map of nodeId -> depth (hop distance from source)
@@ -1966,14 +2026,18 @@ async function loadAndRender() {
                 return 'none';
             });
 
+        blastRadiusDepthMap = depthMap;
+
         var promptEl = document.getElementById('blast-radius-prompt');
         promptEl.querySelector('.ctrl-label').textContent =
             depthMap.size + '/' + nodes.length + ' files affected (' + maxDepth + ' hops max)';
+        showDetailPanel(sourceNode);
         updateStateIndicator();
     }
 
     function clearBlastRadius() {
         blastRadiusSourceId = null;
+        blastRadiusDepthMap = null;
         node.transition().duration(FADE_OUT).ease(d3.easeCubicIn)
             .attr('fill', function(n) { return nodeColor(n); })
             .style('opacity', 1);
@@ -2336,8 +2400,9 @@ async function loadAndRender() {
             pill.setAttribute('data-filter', def.stateKey);
             pill.setAttribute('data-type', def.type);
             pill.title = 'Click to toggle · ⌥ click to solo';
-            pill.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;';
+            pill.style.cssText = 'padding:4px 10px;font-size:11px;border-radius:12px;border:1px solid #444;background:#333;color:#999;cursor:pointer;transition:all 0.15s ease;';
             pill.textContent = def.label + ' · ' + count;
+            pill.setAttribute('data-color', def.color);
 
             var isActive = def.type === 'symbol' ? filterState.symbolTypes[def.stateKey] : filterState.edgeTypes[def.stateKey];
             if (isActive) {
@@ -2346,6 +2411,19 @@ async function loadAndRender() {
                 pill.style.background = def.color + '22';
                 pill.style.color = def.color;
             }
+
+            pill.addEventListener('mouseenter', function() {
+                if (pill.classList.contains('active')) return;
+                pill.style.borderColor = def.color + '88';
+                pill.style.background = def.color + '18';
+                pill.style.color = def.color;
+            });
+            pill.addEventListener('mouseleave', function() {
+                if (pill.classList.contains('active')) return;
+                pill.style.borderColor = '#444';
+                pill.style.background = '#333';
+                pill.style.color = '#999';
+            });
 
             pill.addEventListener('click', function(e) {
                 if (e.altKey) {
@@ -2503,36 +2581,6 @@ async function loadAndRender() {
         simulation.alpha(0.5).restart();
     });
 
-    // Directory halos
-    var halosGroup = null;
-    document.getElementById('halos-toggle').addEventListener('change', function() {
-        if (halosGroup) { halosGroup.remove(); halosGroup = null; }
-        if (!this.checked) return;
-        var dirMap = new Map();
-        nodes.forEach(function(d) {
-            var i = d.path.lastIndexOf('/');
-            var dir = i >= 0 ? d.path.substring(0, i) : '';
-            if (!dirMap.has(dir)) dirMap.set(dir, []);
-            dirMap.get(dir).push(d);
-        });
-        halosGroup = g.insert('g', '.edges').attr('class', 'halos');
-        dirMap.forEach(function(gn) {
-            if (gn.length < 2) return;
-            var cx = gn.reduce(function(s, n) { return s + n.x; }, 0) / gn.length;
-            var cy = gn.reduce(function(s, n) { return s + n.y; }, 0) / gn.length;
-            var hull = d3.polygonHull(gn.map(function(n) { return [n.x, n.y]; }));
-            if (!hull) return;
-            var exp = hull.map(function(pt) {
-                var dx = pt[0] - cx, dy = pt[1] - cy;
-                var len = Math.sqrt(dx * dx + dy * dy);
-                return len === 0 ? pt : [pt[0] + dx / len * 30, pt[1] + dy / len * 30];
-            });
-            halosGroup.append('path')
-                .attr('d', 'M' + exp.map(function(p) { return p[0] + ',' + p[1]; }).join('L') + 'Z')
-                .attr('stroke', '#7f6df2').attr('stroke-opacity', 0.15)
-                .attr('stroke-dasharray', '4 2').attr('fill', '#7f6df2').attr('fill-opacity', 0.04);
-        });
-    });
 
     window.addEventListener('resize', function() {
         svg.attr('width', window.innerWidth).attr('height', window.innerHeight - 40);
