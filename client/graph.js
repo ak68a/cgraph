@@ -2130,9 +2130,9 @@ async function loadAndRender() {
             if (srcN && !isNodeVisible(srcN)) return 0;
             if (tgtN && !isNodeVisible(tgtN)) return 0;
             if (focusNode && !filterState.showNeighbors) {
-                var srcChild = srcN && srcN._parentId === focusNode.id;
-                var tgtChild = tgtN && tgtN._parentId === focusNode.id;
-                if (!srcChild && !tgtChild) return 0;
+                var srcInternal = si === focusNode.id || (srcN && srcN._parentId === focusNode.id);
+                var tgtInternal = ti === focusNode.id || (tgtN && tgtN._parentId === focusNode.id);
+                if (!srcInternal || !tgtInternal) return 0;
             }
             if (focusNode) return (si === focusNode.id || ti === focusNode.id || (srcN && srcN._parentId === focusNode.id) || (tgtN && tgtN._parentId === focusNode.id)) ? 0.7 : (dr ? 0 : 0.04);
             return 0.25;
