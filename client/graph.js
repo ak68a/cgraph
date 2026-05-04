@@ -522,6 +522,7 @@ async function loadAndRender() {
         });
 
         rebuildSimulation();
+        applyFilters();
         updatePillCounts();
         updateStateIndicator();
     }
@@ -551,6 +552,7 @@ async function loadAndRender() {
         });
 
         rebuildSimulation();
+        applyFilters();
         updatePillCounts();
         updateStateIndicator();
     }
