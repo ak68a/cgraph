@@ -506,4 +506,44 @@ mod tests {
 
         fs::remove_dir_all(&tmp).ok();
     }
+
+    #[test]
+    fn test_intra_file_enum_not_dead_code() {
+        // An exported enum used via member access within the same file should
+        // NOT be flagged as dead code. The member_ref extraction creates edges
+        // for EnumName.Value patterns.
+        use crate::analysis;
+
+        let tmp = std::env::temp_dir().join("cgraph_test_intra_file_enum");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        fs::write(
+            tmp.join("badges.ts"),
+            concat!(
+                "export enum BadgeType { Gold, Silver, Bronze }\n",
+                "export function getBadge(level: number) {\n",
+                "  if (level > 10) return BadgeType.Gold;\n",
+                "  return BadgeType.Silver;\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
+
+        let indexer = Indexer::new(vec![Box::new(TsExtractor::new())]);
+        let graph = indexer.index(&tmp).unwrap();
+
+        let result = analysis::dead_code(&graph, &tmp);
+
+        let dead_ids: Vec<&str> = result.confirmed.iter()
+            .chain(result.suspicious.iter())
+            .map(|e| e.symbol_name.as_str())
+            .collect();
+
+        assert!(
+            !dead_ids.contains(&"BadgeType"),
+            "BadgeType should NOT be flagged as dead code (used via member access in same file). Dead: {:?}",
+            dead_ids
+        );
+    }
 }

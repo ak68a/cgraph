@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build *)",
+      "Bash(lsof -ti:3001)",
+      "Bash(xargs kill *)",
+      "Bash(cargo run *)",
+      "Bash(curl -s http://localhost:3001/api/graph)",
+      "Bash(python3 -c ' *)",
+      "WebFetch(domain:localhost)"
+    ]
+  }
+}
